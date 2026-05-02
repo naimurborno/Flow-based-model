@@ -79,8 +79,8 @@ class FlowMatchingLoop:
             # The network output is now a direction (not noise).          #
             # v* = x_data − x_noise  for straight-line flow paths        #
             # ---------------------------------------------------------- #
-            t_batch = t.expand(latent_input.shape[0])   # broadcast scalar t
-
+            # t_batch = t.expand(latent_input.shape[0])   # broadcast scalar t
+            t_batch = t.reshape(1).expand(latent_input.shape[0]).to(self.device)
             with torch.no_grad():
                 model_output = self._velocity_forward(
                     latent_input, t_batch, text_embeddings, pooled_embeddings
@@ -136,29 +136,34 @@ class FlowMatchingLoop:
     # ================================================================== #
 
     def _velocity_forward(
-        self,
-        latent_input      : torch.Tensor,
-        t_batch           : torch.Tensor,
-        text_embeddings   : torch.Tensor,
-        pooled_embeddings : torch.Tensor = None,
+    self,
+    latent_input      : torch.Tensor,
+    t_batch           : torch.Tensor,
+    text_embeddings   : torch.Tensor,
+    pooled_embeddings : torch.Tensor = None,
     ) -> torch.Tensor:
-        """
-        Single UNet/DiT forward pass → velocity prediction.
 
-        SD3 / FLUX use a MMDiT (multimodal DiT) that also accepts
-        pooled_prompt_embeds. Fall back to standard cross-attn call
-        if pooled_embeddings is None (for UNet-based backbones).
-        """
+        # Normalise timestep: SD3 scheduler gives t in [0,1000] → need [0,1]
+        t_norm = t_batch.float()        # [0, 1000] → [0.0, 1.0]
+
+        # Move everything to the same device + dtype as the model
+        device = next(self.unet.parameters()).device
+        dtype  = next(self.unet.parameters()).dtype
+
+        latent_input    = latent_input.to(device=device, dtype=dtype)
+        text_embeddings = text_embeddings.to(device=device, dtype=dtype)
+        t_norm          = t_norm.to(device=device, dtype=dtype)
+
         kwargs = dict(
             hidden_states         = latent_input,
-            timestep              = t_batch,
+            timestep              = t_norm,
             encoder_hidden_states = text_embeddings,
         )
+
         if pooled_embeddings is not None:
-            kwargs["pooled_projections"] = pooled_embeddings
+            kwargs["pooled_projections"] = pooled_embeddings.to(device=device, dtype=dtype)
 
-        return self.unet(**kwargs).sample   # [B, C, H, W] velocity
-
+        return self.unet(**kwargs).sample
     # ================================================================== #
     #  CFG ON VELOCITY                                                    #
     # ================================================================== #

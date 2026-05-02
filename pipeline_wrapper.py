@@ -66,10 +66,10 @@ class SD3PipelineWrapper:
         # Extract components individually
         self.tokenizer      = self.pipe.tokenizer       # CLIP-L
         self.tokenizer_2    = self.pipe.tokenizer_2     # CLIP-G
-        self.tokenizer_3    = self.pipe.tokenizer_3     # T5-XXL
+        self.tokenizer_3    = None    # T5-XXL
         self.text_encoder   = self.pipe.text_encoder    # CLIP-L
         self.text_encoder_2 = self.pipe.text_encoder_2  # CLIP-G
-        self.text_encoder_3 = self.pipe.text_encoder_3  # T5-XXL
+        self.text_encoder_3 = None # T5-XXL
         self.transformer    = self.pipe.transformer     # MMDiT (velocity predictor)
         self.vae            = self.pipe.vae
 
@@ -144,49 +144,39 @@ class SD3PipelineWrapper:
         return prompt_embeds, pooled_prompt_embeds
 
     def _encode_prompt_single(self, text: str):
-        """Encode a single string through all three text encoders."""
         max_len_clip = self.tokenizer.model_max_length    # 77
-        max_len_t5   = 256                                # T5 can go longer
 
         def _tok(tokenizer, text, max_length):
             return tokenizer(
                 text,
-                padding     = "max_length",
-                max_length  = max_length,
-                truncation  = True,
+                padding        = "max_length",
+                max_length     = max_length,
+                truncation     = True,
                 return_tensors = "pt",
             ).input_ids.to(self.device)
 
-        # --- CLIP-L ---------------------------------------------------
-        ids_l    = _tok(self.tokenizer,   text, max_len_clip)
-        out_l    = self.text_encoder(ids_l,  output_hidden_states=True)
-        emb_l    = out_l.hidden_states[-2]           # [1, 77, 768]
-        # pooled_l = out_l.pooler_output               # [1, 768]
-        pooled_l = out_l.hidden_states[-1][:, -1, :]
+        # --- CLIP-L -------------------------------------------------------
+        ids_l    = _tok(self.tokenizer, text, max_len_clip)
+        out_l    = self.text_encoder(ids_l, output_hidden_states=True)
+        emb_l    = out_l.hidden_states[-2]               # [1, 77, 768]
+        pooled_l = out_l.hidden_states[-1][:, -1, :]     # [1, 768]
 
-        # --- CLIP-G ---------------------------------------------------
+        # --- CLIP-G -------------------------------------------------------
         ids_g    = _tok(self.tokenizer_2, text, max_len_clip)
         out_g    = self.text_encoder_2(ids_g, output_hidden_states=True)
-        emb_g    = out_g.hidden_states[-2]           # [1, 77, 1280]
-        # pooled_g = out_g.pooler_output               # [1, 1280]
-        pooled_g = out_g.hidden_states[-1][:, -1, :]
+        emb_g    = out_g.hidden_states[-2]               # [1, 77, 1280]
+        pooled_g = out_g.text_embeds                     # [1, 1280]
 
-        # --- T5-XXL ---------------------------------------------------
-        ids_t5   = _tok(self.tokenizer_3, text, max_len_t5)
-        emb_t5   = self.text_encoder_3(ids_t5)[0]   # [1, 256, 4096]
+        # --- T5 is None — fill its slot with zeros -----------------------
+        D_joint      = 4096
+        emb_l_pad    = torch.nn.functional.pad(emb_l, (0, D_joint - emb_l.shape[-1]))
+        emb_g_pad    = torch.nn.functional.pad(emb_g, (0, D_joint - emb_g.shape[-1]))
+        emb_t5_zero  = torch.zeros(1, 256, D_joint, dtype=emb_l.dtype, device=self.device)
 
-        # --- Concatenate along sequence dimension --------------------
-        # Pad CLIP embeddings to T5's hidden dim for uniform concat
-        D_t5    = emb_t5.shape[-1]                  # 4096
-        emb_l   = torch.nn.functional.pad(emb_l, (0, D_t5 - emb_l.shape[-1]))   # [1,  77, 4096]
-        emb_g   = torch.nn.functional.pad(emb_g, (0, D_t5 - emb_g.shape[-1]))   # [1,  77, 4096]
-        emb_all = torch.cat([emb_l, emb_g, emb_t5], dim=1)                       # [1, 410, 4096]
-
-        # Pooled: concat CLIP-L + CLIP-G pooled outputs
-        pooled  = torch.cat([pooled_l, pooled_g], dim=-1)   # [1, 2048]
+        emb_all = torch.cat([emb_l_pad, emb_g_pad, emb_t5_zero], dim=1)  # [1, 410, 4096]
+        pooled  = torch.cat([pooled_l, pooled_g], dim=-1)                 # [1, 2048]
 
         return emb_all, pooled
-
     # ================================================================== #
     #  LATENT HELPERS                                                     #
     # ================================================================== #
