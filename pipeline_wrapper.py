@@ -1,4 +1,5 @@
 """
+Md. Naimur Asif Borno
 pipeline_wrapper.py  (Flow Matching edition)
 --------------------------------------------
 Loads SD3 / FLUX via Diffusers and exposes each component individually.
