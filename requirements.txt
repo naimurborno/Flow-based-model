@@ -1,0 +1,10 @@
+torch
+diffusers
+transformers
+accelerate
+sentencepiece
+protobuf
+Pillow
+PyYAML
+numpy
+
