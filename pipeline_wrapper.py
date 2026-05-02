@@ -57,7 +57,10 @@ class SD3PipelineWrapper:
         self.pipe = StableDiffusion3Pipeline.from_pretrained(
             model_id,
             torch_dtype = torch.float16,
+            text_encoder_3=None,
+          tokenizer_3=None,
         ).to(self.device)
+        self.pipe.enable_model_cpu_offload()
 
         # Extract components individually
         self.tokenizer      = self.pipe.tokenizer       # CLIP-L
@@ -157,13 +160,15 @@ class SD3PipelineWrapper:
         ids_l    = _tok(self.tokenizer,   text, max_len_clip)
         out_l    = self.text_encoder(ids_l,  output_hidden_states=True)
         emb_l    = out_l.hidden_states[-2]           # [1, 77, 768]
-        pooled_l = out_l.pooler_output               # [1, 768]
+        # pooled_l = out_l.pooler_output               # [1, 768]
+        pooled_l = out_l.hidden_states[-1][:, -1, :]
 
         # --- CLIP-G ---------------------------------------------------
         ids_g    = _tok(self.tokenizer_2, text, max_len_clip)
         out_g    = self.text_encoder_2(ids_g, output_hidden_states=True)
         emb_g    = out_g.hidden_states[-2]           # [1, 77, 1280]
-        pooled_g = out_g.pooler_output               # [1, 1280]
+        # pooled_g = out_g.pooler_output               # [1, 1280]
+        pooled_g = out_g.hidden_states[-1][:, -1, :]
 
         # --- T5-XXL ---------------------------------------------------
         ids_t5   = _tok(self.tokenizer_3, text, max_len_t5)
