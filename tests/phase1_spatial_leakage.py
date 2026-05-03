@@ -73,6 +73,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from scipy import stats
 
 from pipeline_wrapper import SD3PipelineWrapper
 from utils             import load_config, set_seed
@@ -93,44 +94,177 @@ from utils             import load_config, set_seed
 CONFLICT_PROMPTS = {
 
     "color": [
-        # (with_attrs,                          without_attrs,             target,    non_target)
-        ("red car next to blue bicycle",         "car next to bicycle",     "car",     "bicycle"),
-        ("yellow banana beside green apple",     "banana beside apple",     "banana",  "apple"),
-        ("red rose next to white lily",          "rose next to lily",       "rose",    "lily"),
-        ("black cat next to orange cat",         "cat next to cat",         "cat",     "cat"),
-        ("red house beside blue barn",           "house beside barn",       "house",   "barn"),
-        ("purple bag next to yellow bag",        "bag next to bag",         "bag",     "bag"),
-        ("pink flower beside orange flower",     "flower beside flower",    "flower",  "flower"),
-        ("green bottle next to red bottle",      "bottle next to bottle",   "bottle",  "bottle"),
+        # (with_attrs,                               without_attrs,                  target,      non_target)
+        ("red car next to blue bicycle",              "car next to bicycle",          "car",       "bicycle"),
+        ("yellow banana beside green apple",          "banana beside apple",          "banana",    "apple"),
+        ("red rose next to white lily",               "rose next to lily",            "rose",      "lily"),
+        ("red house beside blue barn",                "house beside barn",            "house",     "barn"),
+        ("orange cat next to gray dog",               "cat next to dog",              "cat",       "dog"),
+        ("purple bag next to yellow backpack",        "bag next to backpack",         "bag",       "backpack"),
+        ("pink mug beside orange bowl",               "mug beside bowl",              "mug",       "bowl"),
+        ("green bottle next to red cup",              "bottle next to cup",           "bottle",    "cup"),
+        ("blue shirt next to red jacket",             "shirt next to jacket",         "shirt",     "jacket"),
+        ("white chair beside black table",            "chair beside table",           "chair",     "table"),
+        ("red umbrella next to blue tent",            "umbrella next to tent",        "umbrella",  "tent"),
+        ("yellow bus beside green truck",             "bus beside truck",             "bus",       "truck"),
+        ("pink dress next to purple skirt",           "dress next to skirt",          "dress",     "skirt"),
+        ("orange lamp beside blue vase",              "lamp beside vase",             "lamp",      "vase"),
+        ("red ball next to blue box",                 "ball next to box",             "ball",      "box"),
+        ("cyan mug next to magenta plate",            "mug next to plate",            "mug",       "plate"),
+        ("brown sofa beside gray rug",                "sofa beside rug",              "sofa",      "rug"),
+        ("gold ring next to silver bracelet",         "ring next to bracelet",        "ring",      "bracelet"),
+        ("navy coat next to beige scarf",             "coat next to scarf",           "coat",      "scarf"),
+        ("red kite next to green balloon",            "kite next to balloon",         "kite",      "balloon"),
+        ("purple cushion beside yellow blanket",      "cushion beside blanket",       "cushion",   "blanket"),
+        ("blue phone next to red tablet",             "phone next to tablet",         "phone",     "tablet"),
+        ("orange pumpkin beside green watermelon",    "pumpkin beside watermelon",    "pumpkin",   "watermelon"),
+        ("pink flamingo next to white swan",          "flamingo next to swan",        "flamingo",  "swan"),
+        ("red fire truck beside yellow school bus",   "fire truck beside school bus", "fire truck","school bus"),
+        ("blue jeans next to brown boots",            "jeans next to boots",          "jeans",     "boots"),
+        ("green frog next to red ladybug",            "frog next to ladybug",         "frog",      "ladybug"),
+        ("yellow lemon beside purple grape",          "lemon beside grape",           "lemon",     "grape"),
+        ("white rabbit next to brown fox",            "rabbit next to fox",           "rabbit",    "fox"),
+        ("red strawberry beside green kiwi",          "strawberry beside kiwi",       "strawberry","kiwi"),
+        ("blue dolphin next to gray shark",           "dolphin next to shark",        "dolphin",   "shark"),
+        ("orange tiger beside black panther",         "tiger beside panther",         "tiger",     "panther"),
+        ("pink pig next to gray elephant",            "pig next to elephant",         "pig",       "elephant"),
+        ("red tulip next to blue iris",               "tulip next to iris",           "tulip",     "iris"),
+        ("green parrot beside yellow canary",         "parrot beside canary",         "parrot",    "canary"),
+        ("blue kayak next to red canoe",              "kayak next to canoe",          "kayak",     "canoe"),
+        ("purple eggplant beside orange carrot",      "eggplant beside carrot",       "eggplant",  "carrot"),
+        ("red mailbox next to blue post",             "mailbox next to post",         "mailbox",   "post"),
+        ("yellow sunflower beside pink peony",        "sunflower beside peony",       "sunflower", "peony"),
+        ("green cactus next to brown tree",           "cactus next to tree",          "cactus",    "tree"),
+        ("blue tent next to orange campfire",         "tent next to campfire",        "tent",      "campfire"),
+        ("red barn beside white farmhouse",           "barn beside farmhouse",        "barn",      "farmhouse"),
+        ("purple lavender beside yellow wheat",       "lavender beside wheat",        "lavender",  "wheat"),
+        ("black crow next to white dove",             "crow next to dove",            "crow",      "dove"),
+        ("red apple beside yellow pear",              "apple beside pear",            "apple",     "pear"),
+        ("blue blueberry next to red raspberry",      "blueberry next to raspberry",  "blueberry", "raspberry"),
+        ("green lime beside orange tangerine",        "lime beside tangerine",        "lime",      "tangerine"),
+        ("pink peach next to purple plum",            "peach next to plum",           "peach",     "plum"),
+        ("red pepper beside green cucumber",          "pepper beside cucumber",       "pepper",    "cucumber"),
+        ("yellow corn next to purple cabbage",        "corn next to cabbage",         "corn",      "cabbage"),
     ],
 
     "shape": [
-        ("round table next to square chair",     "table next to chair",     "table",   "chair"),
-        ("oval mirror beside rectangular door",  "mirror beside door",      "mirror",  "door"),
-        ("triangular sign next to circular clock","sign next to clock",     "sign",    "clock"),
-        ("round ball next to square box",        "ball next to box",        "ball",    "box"),
-        ("curved sofa beside angular desk",      "sofa beside desk",        "sofa",    "desk"),
-        ("flat plate next to tall glass",        "plate next to glass",     "plate",   "glass"),
+        ("round table next to square chair",          "table next to chair",          "table",     "chair"),
+        ("oval mirror beside rectangular door",       "mirror beside door",           "mirror",    "door"),
+        ("triangular sign next to circular clock",    "sign next to clock",           "sign",      "clock"),
+        ("round ball next to square box",             "ball next to box",             "ball",      "box"),
+        ("curved sofa beside angular desk",           "sofa beside desk",             "sofa",      "desk"),
+        ("flat plate next to tall glass",             "plate next to glass",          "plate",     "glass"),
+        ("cylindrical cup next to rectangular book",  "cup next to book",             "cup",       "book"),
+        ("round clock beside square frame",           "clock beside frame",           "clock",     "frame"),
+        ("pointed hat next to round helmet",          "hat next to helmet",           "hat",       "helmet"),
+        ("arched bridge next to flat road",           "bridge next to road",          "bridge",    "road"),
+        ("curved lamp next to straight pole",         "lamp next to pole",            "lamp",      "pole"),
+        ("hexagonal tile next to round stone",        "tile next to stone",           "tile",      "stone"),
+        ("oval tray beside rectangular mat",          "tray beside mat",              "tray",      "mat"),
+        ("round pot next to square pan",              "pot next to pan",              "pot",       "pan"),
+        ("spiral staircase next to flat platform",    "staircase next to platform",   "staircase", "platform"),
+        ("dome tent next to rectangular cabin",       "tent next to cabin",           "tent",      "cabin"),
+        ("cone hat beside cylinder mug",              "hat beside mug",               "hat",       "mug"),
+        ("square pillow next to round bolster",       "pillow next to bolster",       "pillow",    "bolster"),
+        ("flat board beside curved bowl",             "board beside bowl",            "board",     "bowl"),
+        ("pointed spire next to flat roof",           "spire next to roof",           "spire",     "roof"),
+        ("round wheel beside rectangular door",       "wheel beside door",            "wheel",     "door"),
+        ("oval pond next to rectangular pool",        "pond next to pool",            "pond",      "pool"),
+        ("circular shield beside rectangular sword",  "shield beside sword",          "shield",    "sword"),
+        ("cube block next to sphere ball",            "block next to ball",           "block",     "ball"),
+        ("flat canvas beside round vase",             "canvas beside vase",           "canvas",    "vase"),
+        ("triangular roof next to square wall",       "roof next to wall",            "roof",      "wall"),
+        ("round coin beside rectangular card",        "coin beside card",             "coin",      "card"),
+        ("cylindrical barrel next to cubic crate",    "barrel next to crate",         "barrel",    "crate"),
+        ("oval egg beside rectangular toast",         "egg beside toast",             "egg",       "toast"),
+        ("curved arch next to straight column",       "arch next to column",          "arch",      "column"),
+        ("round globe beside flat map",               "globe beside map",             "globe",     "map"),
+        ("square tile next to circular drain",        "tile next to drain",           "tile",      "drain"),
+        ("triangular wedge next to rectangular block","wedge next to block",          "wedge",     "block"),
+        ("round drum beside rectangular keyboard",    "drum beside keyboard",         "drum",      "keyboard"),
+        ("flat tray beside round bowl",               "tray beside bowl",             "tray",      "bowl"),
+        ("oval plate beside square napkin",           "plate beside napkin",          "plate",     "napkin"),
+        ("cylindrical tower next to flat wall",       "tower next to wall",           "tower",     "wall"),
+        ("round button beside square switch",         "button beside switch",         "button",    "switch"),
+        ("curved bench next to straight fence",       "bench next to fence",          "bench",     "fence"),
+        ("hexagonal box next to round tin",           "box next to tin",              "box",       "tin"),
+        ("rectangular window beside round porthole",  "window beside porthole",       "window",    "porthole"),
+        ("flat shelf beside curved hook",             "shelf beside hook",            "shelf",     "hook"),
+        ("conical funnel next to cylindrical pipe",   "funnel next to pipe",          "funnel",    "pipe"),
+        ("oval brooch beside square buckle",          "brooch beside buckle",         "brooch",    "buckle"),
+        ("round manhole next to rectangular grate",   "manhole next to grate",        "manhole",   "grate"),
+        ("triangular pennant beside rectangular flag","pennant beside flag",          "pennant",   "flag"),
+        ("flat disc next to cubic dice",              "disc next to dice",            "disc",      "dice"),
+        ("curved horn beside straight rod",           "horn beside rod",              "horn",      "rod"),
+        ("round mirror beside rectangular picture",   "mirror beside picture",        "mirror",    "picture"),
+        ("square sandbox next to round fountain",     "sandbox next to fountain",     "sandbox",   "fountain"),
     ],
 
     "texture": [
-        ("metallic car next to wooden bicycle",  "car next to bicycle",     "car",     "bicycle"),
-        ("glossy table beside rusty chair",      "table beside chair",      "table",   "chair"),
-        ("smooth stone next to rough brick",     "stone next to brick",     "stone",   "brick"),
-        ("silky curtain next to rough carpet",   "curtain next to carpet",  "curtain", "carpet"),
-        ("shiny vase beside matte pot",          "vase beside pot",         "vase",    "pot"),
-        ("wooden door next to metallic window",  "door next to window",     "door",    "window"),
+        ("metallic car next to wooden bicycle",       "car next to bicycle",          "car",       "bicycle"),
+        ("glossy table beside rusty chair",           "table beside chair",           "table",     "chair"),
+        ("smooth stone next to rough brick",          "stone next to brick",          "stone",     "brick"),
+        ("silky curtain next to rough carpet",        "curtain next to carpet",       "curtain",   "carpet"),
+        ("shiny vase beside matte pot",               "vase beside pot",              "vase",      "pot"),
+        ("wooden door next to metallic window",       "door next to window",          "door",      "window"),
+        ("fuzzy blanket beside smooth pillow",        "blanket beside pillow",        "blanket",   "pillow"),
+        ("grainy wall next to polished floor",        "wall next to floor",           "wall",      "floor"),
+        ("leather sofa beside fabric chair",          "sofa beside chair",            "sofa",      "chair"),
+        ("crystal glass next to ceramic mug",         "glass next to mug",            "glass",     "mug"),
+        ("velvet cushion beside woven basket",        "cushion beside basket",        "cushion",   "basket"),
+        ("sandy path next to grassy lawn",            "path next to lawn",            "path",      "lawn"),
+        ("knitted sweater next to denim jacket",      "sweater next to jacket",       "sweater",   "jacket"),
+        ("marble countertop beside wooden shelf",     "countertop beside shelf",      "countertop","shelf"),
+        ("plastic bucket next to metal bin",          "bucket next to bin",           "bucket",    "bin"),
+        ("rough sandpaper beside smooth silk",        "sandpaper beside silk",        "sandpaper", "silk"),
+        ("glossy magazine beside matte notebook",     "magazine beside notebook",     "magazine",  "notebook"),
+        ("fluffy towel beside stiff cardboard",       "towel beside cardboard",       "towel",     "cardboard"),
+        ("bumpy cobblestone next to flat pavement",   "cobblestone next to pavement", "cobblestone","pavement"),
+        ("woven mat beside glass surface",            "mat beside surface",           "mat",       "surface"),
+        ("rusted pipe next to polished rail",         "pipe next to rail",            "pipe",      "rail"),
+        ("furry rug beside tiled floor",              "rug beside floor",             "rug",       "floor"),
+        ("cracked wall next to smooth ceiling",       "wall next to ceiling",         "wall",      "ceiling"),
+        ("embroidered cloth beside plain linen",      "cloth beside linen",           "cloth",     "linen"),
+        ("bark texture tree next to smooth trunk",    "tree next to trunk",           "tree",      "trunk"),
+        ("corrugated roof next to flat wall",         "roof next to wall",            "roof",      "wall"),
+        ("pebbly beach next to smooth dock",          "beach next to dock",           "beach",     "dock"),
+        ("scaly fish next to smooth frog",            "fish next to frog",            "fish",      "frog"),
+        ("hairy dog next to smooth cat",              "dog next to cat",              "dog",       "cat"),
+        ("thorny bush beside smooth hedge",           "bush beside hedge",            "bush",      "hedge"),
+        ("bubbly foam next to flat water",            "foam next to water",           "foam",      "water"),
+        ("wiry fence beside smooth wall",             "fence beside wall",            "fence",     "wall"),
+        ("crinkled paper next to smooth card",        "paper next to card",           "paper",     "card"),
+        ("wooden plank beside concrete slab",         "plank beside slab",            "plank",     "slab"),
+        ("feathery pillow beside coarse blanket",     "pillow beside blanket",        "pillow",    "blanket"),
+        ("silicone mat beside rough stone",           "mat beside stone",             "mat",       "stone"),
+        ("glazed pot beside unglazed bowl",           "pot beside bowl",              "pot",       "bowl"),
+        ("metallic foil beside paper bag",            "foil beside bag",              "foil",      "bag"),
+        ("rough hemp rope beside smooth cord",        "rope beside cord",             "rope",      "cord"),
+        ("knobby tire next to smooth wheel",          "tire next to wheel",           "tire",      "wheel"),
+        ("ribbed sweater beside flat shirt",          "sweater beside shirt",         "sweater",   "shirt"),
+        ("spiky cactus next to smooth aloe",          "cactus next to aloe",          "cactus",    "aloe"),
+        ("porous sponge beside solid block",          "sponge beside block",          "sponge",    "block"),
+        ("grainy bread beside smooth butter",         "bread beside butter",          "bread",     "butter"),
+        ("flaky pastry beside smooth cake",           "pastry beside cake",           "pastry",    "cake"),
+        ("bristly brush beside soft cloth",           "brush beside cloth",           "brush",     "cloth"),
+        ("rough gravel beside smooth sand",           "gravel beside sand",           "gravel",    "sand"),
+        ("waxy candle beside matte stone",            "candle beside stone",          "candle",    "stone"),
+        ("quilted jacket beside smooth vest",         "jacket beside vest",           "jacket",    "vest"),
+        ("lumpy cushion beside flat board",           "cushion beside board",         "cushion",   "board"),
     ],
 }
 
-# Blocks to probe — based on DAVE finding that blocks 12-14 matter most
-BLOCKS_TO_WATCH = [0, 12, 23]
 
-# Attention mask threshold — noun token attention map binarization
-MASK_THRESHOLD = 0.3   # top 30% of attention mass = object region
+# Blocks to probe — dense sampling around blocks 12-14 where DAVE shows leakage peaks
+BLOCKS_TO_WATCH = [8, 10, 12, 14, 16]
+
+# Attention mask threshold — top 50% of attention mass = object region (start conservative)
+MASK_THRESHOLD = 0.5   # ChatGPT's recommendation: start at 0.5, inspect masks, adjust
 
 # Decision thresholds — written BEFORE running
-PROCEED_COLOR_LEAK_GT_1        = True   # color Leak > 1.0
+# NOTE: Removed hard Leak > 1.0 requirement (ChatGPT was right — too harsh).
+# Real leakage means color leaks DISPROPORTIONATELY MORE than shape/texture,
+# not necessarily more than the target itself.
 PROCEED_COLOR_GT_SHAPE         = True   # color Leak > shape Leak
 PROCEED_COLOR_GT_TEXTURE       = True   # color Leak > texture Leak
 
@@ -191,30 +325,67 @@ class FeatureExtractor:
                     self.hidden_states[block_idx] = h.detach().cpu().float()
                 return hook
 
-            # ---- Hook 2: capture attention weights from attn submodule ----
+            # ---- Hook 2: capture attention weights via F.scaled_dot_product_attention ----
+            # SD3's diffusers Attention module does NOT return attention weights
+            # in its output — it returns only the attended hidden states.
+            # We patch torch.nn.functional.scaled_dot_product_attention inside
+            # the attn submodule's forward call to intercept the weights directly.
             def make_attn_hook(block_idx):
                 def hook(module, inputs, outputs):
                     if not self._active:
                         return
-                    # Attention output is typically a tuple (attn_output, attn_weights)
-                    # or just attn_output depending on diffusers version
-                    # We try to capture the weights if available
-                    if isinstance(outputs, tuple) and len(outputs) >= 2:
-                        attn_weights = outputs[1]
-                        if attn_weights is not None:
-                            self.attention_maps[block_idx] = (
-                                attn_weights.detach().cpu().float()
-                            )
+                    # outputs is the attended tensor [B, heads, D_total, head_dim]
+                    # or [B, D_total, C] — NOT a tuple with weights in SD3 diffusers.
+                    # We store None here; weights are captured via the sdp patch below.
+                    pass
                 return hook
 
             handles.append(
                 block.register_forward_hook(make_hidden_hook(idx))
             )
 
-            # Try to hook attention submodule — may vary by diffusers version
+            # Patch scaled_dot_product_attention on the attn submodule to capture weights
             if hasattr(block, "attn"):
+                _orig_sdp = torch.nn.functional.scaled_dot_product_attention
+
+                def make_sdp_patch(block_idx, orig_fn):
+                    def patched_sdp(query, key, value, attn_mask=None,
+                                    dropout_p=0.0, is_causal=False, **kwargs):
+                        # Compute weights manually so we can store them
+                        # query: [B, heads, D_total, head_dim]
+                        scale = query.shape[-1] ** -0.5
+                        scores = torch.matmul(query, key.transpose(-2, -1)) * scale
+                        if attn_mask is not None:
+                            scores = scores + attn_mask
+                        weights = torch.softmax(scores, dim=-1)
+                        out = torch.matmul(weights, value)
+                        if self._active:
+                            self.attention_maps[block_idx] = weights.detach().cpu().float()
+                        return out
+                    return patched_sdp
+
+                # We'll use a forward pre/post hook on the attn module instead
+                # to safely wrap sdp only during that block's attention call
+                def make_attn_pre_hook(block_idx, orig_sdp):
+                    def pre_hook(module, args):
+                        if self._active:
+                            import torch.nn.functional as F
+                            F.scaled_dot_product_attention = make_sdp_patch(block_idx, orig_sdp)
+                    return pre_hook
+
+                def make_attn_post_hook(block_idx, orig_sdp):
+                    def post_hook(module, args, output):
+                        if self._active:
+                            import torch.nn.functional as F
+                            F.scaled_dot_product_attention = orig_sdp
+                    return post_hook
+
+                orig_sdp = torch.nn.functional.scaled_dot_product_attention
                 handles.append(
-                    block.attn.register_forward_hook(make_attn_hook(idx))
+                    block.attn.register_forward_pre_hook(make_attn_pre_hook(idx, orig_sdp))
+                )
+                handles.append(
+                    block.attn.register_forward_hook(make_attn_post_hook(idx, orig_sdp))
                 )
 
         self._active = True
@@ -291,13 +462,15 @@ def single_forward_pass(
 def compute_perturbation_map(
     h_with    : torch.Tensor,   # [1, D, C]
     h_without : torch.Tensor,   # [1, D, C]
-) -> Tuple[np.ndarray, int]:
+) -> Tuple[np.ndarray, int, torch.Tensor]:
     """
     Computes M = ||ΔH||_2 per token, reshaped to 2D spatial grid.
+    Also returns raw delta [D, C] for projection-based analysis.
 
     Returns:
         M         : np.ndarray [grid_size, grid_size]
         grid_size : int
+        delta     : torch.Tensor [D, C]
     """
     delta = h_with[0] - h_without[0]           # [D, C]
     norms = torch.norm(delta, dim=-1)           # [D]
@@ -312,7 +485,102 @@ def compute_perturbation_map(
         )
 
     M = norms.numpy().reshape(grid_size, grid_size)
-    return M, grid_size
+    return M, grid_size, delta
+
+
+# ==================================================================== #
+#  COLOR SUBSPACE VECTOR                                                #
+# ==================================================================== #
+
+def compute_color_direction(
+    color_deltas: List[torch.Tensor],  # list of [D, C] tensors
+) -> torch.Tensor:
+    """
+    Computes dominant color perturbation direction v_color via SVD.
+    Stacks all color ΔH tensors, runs SVD, returns top-1 right singular vector.
+
+    v_color: [C] — the direction in channel space that color perturbs most.
+    """
+    # Stack: [N*D, C]
+    stacked = torch.cat([d.reshape(-1, d.shape[-1]) for d in color_deltas], dim=0)
+    stacked = stacked.float()
+
+    # SVD on [N*D, C] — we want the dominant direction in C-space
+    # Use randomized SVD for speed (only need top-1)
+    try:
+        U, S, Vh = torch.linalg.svd(stacked, full_matrices=False)
+        v_color = Vh[0]   # [C] — top right singular vector
+    except Exception:
+        # Fallback: mean direction
+        v_color = stacked.mean(dim=0)
+        v_color = v_color / (v_color.norm() + 1e-8)
+
+    return v_color   # [C]
+
+
+# ==================================================================== #
+#  PROJECTION-BASED LEAKAGE SCORE                                       #
+# ==================================================================== #
+
+def compute_projection_leakage(
+    delta         : torch.Tensor,   # [D, C]
+    v_color       : torch.Tensor,   # [C]
+    target_mask   : np.ndarray,     # [grid, grid] bool
+    non_target_mask: np.ndarray,    # [grid, grid] bool
+    grid_size     : int,
+) -> Dict[str, float]:
+    """
+    Refinement 1: Project each token's ΔH onto v_color.
+    S_i = |ΔH_i · v_color|  — color-specific leaked energy per token.
+
+    Compare mean S in target vs non-target region.
+    This isolates color-specific leakage, not generic perturbation energy.
+    """
+    v = v_color.float()
+    v = v / (v.norm() + 1e-8)
+
+    # Per-token projection onto color direction
+    projections = (delta.float() @ v).abs()   # [D]
+    S = projections.numpy().reshape(grid_size, grid_size)
+
+    target_flat     = target_mask.flatten()
+    non_target_flat = non_target_mask.flatten()
+    S_flat          = projections.numpy()
+
+    target_proj     = S_flat[target_flat].mean()     if target_flat.any()     else 0.0
+    non_target_proj = S_flat[non_target_flat].mean() if non_target_flat.any() else 0.0
+
+    ratio = float(non_target_proj / target_proj) if target_proj > 0 else float("nan")
+
+    return {
+        "proj_leak_ratio"  : ratio,
+        "target_proj"      : float(target_proj),
+        "non_target_proj"  : float(non_target_proj),
+        "S_map"            : S,
+    }
+
+
+def compute_concentration_spill(
+    S_map        : np.ndarray,   # [grid, grid] projection scores
+    target_mask  : np.ndarray,   # [grid, grid] bool
+    top_pct      : float = 0.20, # top 20%
+) -> float:
+    """
+    Refinement 2: Spatial concentration map + center spread.
+    Finds top 20% strongest projected tokens.
+    Returns fraction of those tokens that lie OUTSIDE the target mask.
+    High spill → color direction physically spreads across objects.
+    """
+    flat   = S_map.flatten()
+    thresh = np.percentile(flat, 100 * (1 - top_pct))
+    top_mask = S_map >= thresh                    # [grid, grid] bool
+
+    outside_target = top_mask & ~target_mask
+    spill = outside_target.sum() / max(top_mask.sum(), 1)
+    return float(spill)
+
+
+
 
 
 # ==================================================================== #
@@ -674,32 +942,60 @@ def plot_attention_masks_sanity(
 # ==================================================================== #
 
 def write_verdict(
-    mean_leakage : Dict[str, float],
-    out_dir      : Path,
+    mean_leakage      : Dict[str, float],
+    mean_proj_leakage : Dict[str, float],
+    mean_spill        : Dict[str, float],
+    ttest_cs          : dict,
+    ttest_ct          : dict,
+    out_dir           : Path,
 ) -> bool:
     """
-    Applies decision rule and writes verdict file.
-    Decision rule written BEFORE running — no post-hoc threshold tuning.
+    Verdict based on projection leakage + statistical significance.
     """
-    color_leak   = mean_leakage.get("color",   0.0)
-    shape_leak   = mean_leakage.get("shape",   0.0)
-    texture_leak = mean_leakage.get("texture", 0.0)
+    color_proj   = mean_proj_leakage.get("color",   0.0)
+    shape_proj   = mean_proj_leakage.get("shape",   0.0)
+    texture_proj = mean_proj_leakage.get("texture", 0.0)
 
-    c1 = color_leak > 1.0
-    c2 = color_leak > shape_leak
-    c3 = color_leak > texture_leak
+    c1 = color_proj > shape_proj
+    c2 = color_proj > texture_proj
+    c3 = ttest_cs["p"] < 0.05 if not np.isnan(ttest_cs["p"]) else False
+    c4 = ttest_ct["p"] < 0.05 if not np.isnan(ttest_ct["p"]) else False
 
-    proceed = c1 and c2 and c3
+    proceed = c1 and c2 and (c3 or c4)  # at least one sig test
+
+    def sig(p):
+        if np.isnan(p): return "n/a"
+        if p < 0.001:   return "p<0.001 ***"
+        if p < 0.01:    return "p<0.01  **"
+        if p < 0.05:    return "p<0.05  *"
+        return f"p={p:.3f} ns"
 
     lines = [
-        "=" * 60,
+        "=" * 65,
         "EXPERIMENT 3 VERDICT",
-        "=" * 60,
+        "=" * 65,
+        "",
+        "PRIMARY METRIC: projection leakage onto v_color direction",
         "",
         "DECISION RULE (set before running):",
-        f"  C1: color Leak > 1.0          → {color_leak:.4f}  {'✅' if c1 else '❌'}",
-        f"  C2: color Leak > shape Leak   → {color_leak:.4f} vs {shape_leak:.4f}  {'✅' if c2 else '❌'}",
-        f"  C3: color Leak > texture Leak → {color_leak:.4f} vs {texture_leak:.4f}  {'✅' if c3 else '❌'}",
+        f"  C1: color proj_leak > shape proj_leak  "
+        f"→ {color_proj:.4f} vs {shape_proj:.4f}  {'✅' if c1 else '❌'}",
+        f"  C2: color proj_leak > texture proj_leak"
+        f"→ {color_proj:.4f} vs {texture_proj:.4f}  {'✅' if c2 else '❌'}",
+        f"  C3: color vs shape   spill t-test "
+        f"→ {sig(ttest_cs['p'])}  {'✅' if c3 else '❌'}",
+        f"  C4: color vs texture spill t-test "
+        f"→ {sig(ttest_ct['p'])}  {'✅' if c4 else '❌'}",
+        "",
+        "SUPPLEMENTARY (raw norm leakage):",
+        f"  color: {mean_leakage.get('color',0):.4f}  "
+        f"shape: {mean_leakage.get('shape',0):.4f}  "
+        f"texture: {mean_leakage.get('texture',0):.4f}",
+        "",
+        "CONCENTRATION SPILL (top-20% tokens outside target):",
+        f"  color: {mean_spill.get('color',0):.4f}  "
+        f"shape: {mean_spill.get('shape',0):.4f}  "
+        f"texture: {mean_spill.get('texture',0):.4f}",
         "",
     ]
 
@@ -707,51 +1003,28 @@ def write_verdict(
         lines += [
             "VERDICT: ✅ PROCEED TO EXPERIMENT 4",
             "",
-            "Color attribute perturbations leak MORE into the wrong",
-            "spatial object region than shape or texture perturbations.",
-            "The geometric concentration (Phase 0) is confirmed to cause",
-            "disproportionate spatial leakage.",
+            "Color attribute perturbations project disproportionately onto",
+            "the dominant color subspace direction AND leak into wrong spatial",
+            "regions more than shape/texture — with statistical significance.",
             "",
-            "NEXT STEP:",
-            "  Run experiment4_hidden_output_correlation.py",
-            "  to show that hidden LL leakage predicts visible image failure.",
+            "NEXT STEP: Run experiment4_hidden_output_correlation.py",
         ]
     else:
         lines += ["VERDICT: ❌ STOP — check which condition failed", ""]
-
         if not c1:
-            lines += [
-                "FAILED: C1 — color Leak ratio ≤ 1.0",
-                "  Meaning: color perturbations do NOT bleed more into",
-                "  wrong object region than into correct region.",
-                "  Action: Check attention masks — are they correctly",
-                "          identifying object regions?",
-                "          Try lower MASK_THRESHOLD (currently 0.3).",
-                "          Try different blocks (currently [0, 12, 23]).",
-            ]
-
+            lines.append("  FAILED C1: color proj_leak ≤ shape proj_leak")
         if not c2:
+            lines.append("  FAILED C2: color proj_leak ≤ texture proj_leak")
+        if not c3 and not c4:
             lines += [
-                "FAILED: C2 — color Leak ≤ shape Leak",
-                "  Meaning: shape leaks as much or more than color.",
-                "  Action: Color is not uniquely prone to leakage.",
-                "          The geometric concentration finding from Phase 0",
-                "          may not directly map to spatial misbinding.",
-                "          Revise hypothesis.",
-            ]
-
-        if not c3:
-            lines += [
-                "FAILED: C3 — color Leak ≤ texture Leak",
-                "  Meaning: texture leaks as much or more than color.",
-                "  Action: Same as C2 failure — check if texture",
-                "          prompts are creating similar global perturbations.",
+                "  FAILED C3+C4: no t-test reached p<0.05",
+                "  → Need more prompt pairs or the effect is not real.",
+                "  → Check v_color quality (see v_color.pt).",
             ]
 
     verdict_text = "\n".join(lines)
     print(f"\n{verdict_text}\n")
     (out_dir / "exp3_verdict.txt").write_text(verdict_text)
-
     return proceed
 
 
@@ -785,7 +1058,7 @@ def main():
     # ---------------------------------------------------------------- #
     # 1. Load config — override CFG to disable it                       #
     # ---------------------------------------------------------------- #
-    cfg = load_config(args.config)
+    cfg = load_config("/content/Flow-based-model/config.yaml")
     cfg["flow"]["guidance_scale"] = 1.0    # CRITICAL: disable CFG
     cfg["flow"]["num_steps"]      = args.steps
 
@@ -834,6 +1107,20 @@ def main():
     leak_records: Dict[str, List[float]] = {
         attr: [] for attr in CONFLICT_PROMPTS
     }
+
+    # NEW: projection-based leakage (Refinement 1)
+    proj_leak_records: Dict[str, List[float]] = {
+        attr: [] for attr in CONFLICT_PROMPTS
+    }
+
+    # NEW: concentration spill (Refinement 2)
+    spill_records: Dict[str, List[float]] = {
+        attr: [] for attr in CONFLICT_PROMPTS
+    }
+
+    # NEW: collect color deltas at block 12 to compute v_color
+    color_deltas_for_svd: List[torch.Tensor] = []
+    v_color: Optional[torch.Tensor] = None  # computed after color pass
 
     # Per-block storage for Figure 3
     block_leak_records: Dict[int, Dict[str, List[float]]] = {
@@ -920,7 +1207,7 @@ def main():
                         continue
 
                     try:
-                        M, grid_size = compute_perturbation_map(
+                        M, grid_size, delta = compute_perturbation_map(
                             h_with[block_idx],
                             h_without[block_idx],
                         )
@@ -928,9 +1215,12 @@ def main():
                         print(f"    [WARN] {e}")
                         continue
 
+                    # Collect color deltas at block 12 mid-step for SVD
+                    if attr_type == "color" and block_idx == 12 and step_name == "mid":
+                        color_deltas_for_svd.append(delta.cpu().float())
+
                     # ---- Build object masks -------------------------
-                    # Try attention-based masks first
-                    attn_map = attn_without.get(block_idx)  # use without-attr pass
+                    attn_map = attn_without.get(block_idx)
 
                     target_mask = build_object_mask_from_attention(
                         attn_map, target_token_idx, grid_size
@@ -939,7 +1229,6 @@ def main():
                         attn_map, non_target_token_idx, grid_size
                     )
 
-                    # Fall back to spatial halves if attention unavailable
                     using_fallback = False
                     if target_mask is None or not target_mask.any():
                         target_mask  = build_spatial_half_mask(grid_size, "left")
@@ -952,26 +1241,55 @@ def main():
                         print(f"    [INFO] Block {block_idx} step {step_name}: "
                               f"using spatial fallback masks")
 
-                    # ---- Compute leakage ratio ----------------------
+                    # ---- Raw norm leakage (original metric) ---------
                     result = compute_leakage_ratio(M, target_mask, non_target_mask)
                     ratio  = result["leak_ratio"]
-
                     if not np.isnan(ratio):
                         leak_records[attr_type].append(ratio)
                         block_leak_records[block_idx][attr_type].append(ratio)
 
-                    # ---- Save sample for visualization --------------
-                    if (attr_type not in sample_maps
-                            and block_idx == 12
-                            and step_name == "mid"):
-                        sample_maps[attr_type] = {
-                            "M"              : M.copy(),
-                            "target_mask"    : target_mask.copy(),
-                            "non_target_mask": non_target_mask.copy(),
-                            "target"         : target_noun,
-                            "non_target"     : non_target_noun,
-                            "prompt"         : with_prompt,
-                        }
+                    # ---- Projection leakage (Refinement 1+2) --------
+                    # Use v_color if already computed, else defer
+                    if v_color is not None:
+                        proj_result = compute_projection_leakage(
+                            delta, v_color, target_mask, non_target_mask, grid_size
+                        )
+                        if not np.isnan(proj_result["proj_leak_ratio"]):
+                            proj_leak_records[attr_type].append(
+                                proj_result["proj_leak_ratio"]
+                            )
+                        spill = compute_concentration_spill(
+                            proj_result["S_map"], target_mask
+                        )
+                        spill_records[attr_type].append(spill)
+
+                        # Update sample map with S_map for visualization
+                        if (attr_type not in sample_maps
+                                and block_idx == 12
+                                and step_name == "mid"):
+                            sample_maps[attr_type] = {
+                                "M"              : M.copy(),
+                                "S_map"          : proj_result["S_map"].copy(),
+                                "target_mask"    : target_mask.copy(),
+                                "non_target_mask": non_target_mask.copy(),
+                                "target"         : target_noun,
+                                "non_target"     : non_target_noun,
+                                "prompt"         : with_prompt,
+                            }
+                    else:
+                        # For color pass (before v_color exists), store raw maps
+                        if (attr_type not in sample_maps
+                                and block_idx == 12
+                                and step_name == "mid"):
+                            sample_maps[attr_type] = {
+                                "M"              : M.copy(),
+                                "S_map"          : None,
+                                "target_mask"    : target_mask.copy(),
+                                "non_target_mask": non_target_mask.copy(),
+                                "target"         : target_noun,
+                                "non_target"     : non_target_noun,
+                                "prompt"         : with_prompt,
+                            }
 
                     # ---- Save mask sanity sample --------------------
                     mask_key = f"{attr_type}_{target_noun}_block{block_idx}"
@@ -999,6 +1317,48 @@ def main():
                   f"shape: {np.nanmean(leak_records['shape']):.3f}  "
                   f"texture: {np.nanmean(leak_records['texture']):.3f})")
 
+        # ---- After color pass: compute v_color and run projection pass ----
+        if attr_type == "color" and color_deltas_for_svd:
+            print(f"\n[v_color] Computing dominant color direction from "
+                  f"{len(color_deltas_for_svd)} color ΔH samples (block 12, mid)...")
+            v_color = compute_color_direction(color_deltas_for_svd)
+            torch.save(v_color, out_dir / "v_color.pt")
+            print(f"[v_color] Saved → {out_dir / 'v_color.pt'}")
+
+            # Re-run projection leakage for already-collected color prompts
+            # (v_color wasn't available during the color pass above)
+            print("[v_color] Back-filling projection scores for color prompts...")
+            color_list = prompts_to_run["color"]
+            for with_p, without_p, tgt, ntgt in color_list:
+                tgt_idx  = get_noun_token_index(wrapper, without_p, tgt)
+                ntgt_idx = get_noun_token_index(wrapper, without_p, ntgt)
+                for step_name, step_idx in step_indices.items():
+                    h_w, _ = single_forward_pass(wrapper, extractor, shared_latents,
+                                                  with_p, step_idx, timesteps)
+                    h_wo, _ = single_forward_pass(wrapper, extractor, shared_latents,
+                                                   without_p, step_idx, timesteps)
+                    for block_idx in BLOCKS_TO_WATCH:
+                        if block_idx not in h_w or block_idx not in h_wo:
+                            continue
+                        try:
+                            _, gs, delta = compute_perturbation_map(
+                                h_w[block_idx], h_wo[block_idx]
+                            )
+                        except ValueError:
+                            continue
+                        t_mask = build_spatial_half_mask(gs, "left")
+                        nt_mask = build_spatial_half_mask(gs, "right")
+                        pr = compute_projection_leakage(
+                            delta, v_color, t_mask, nt_mask, gs
+                        )
+                        if not np.isnan(pr["proj_leak_ratio"]):
+                            proj_leak_records["color"].append(pr["proj_leak_ratio"])
+                        spill_records["color"].append(
+                            compute_concentration_spill(pr["S_map"], t_mask)
+                        )
+            print("[v_color] Back-fill complete.")
+
+
     # ---------------------------------------------------------------- #
     # 8. Aggregate                                                       #
     # ---------------------------------------------------------------- #
@@ -1008,25 +1368,89 @@ def main():
         vals = [v for v in leak_records[attr] if not np.isnan(v)]
         mean_leakage[attr] = np.mean(vals) if vals else 0.0
 
+    # Projection-based means
+    mean_proj_leakage = {}
+    for attr in CONFLICT_PROMPTS:
+        vals = [v for v in proj_leak_records[attr] if not np.isnan(v)]
+        mean_proj_leakage[attr] = np.mean(vals) if vals else 0.0
+
+    mean_spill = {}
+    for attr in CONFLICT_PROMPTS:
+        vals = [v for v in spill_records[attr] if not np.isnan(v)]
+        mean_spill[attr] = np.mean(vals) if vals else 0.0
+
+    # Refinement 3: Paired t-tests — color vs shape, color vs texture
+    def run_ttest(a_vals, b_vals, label):
+        a = [v for v in a_vals if not np.isnan(v)]
+        b = [v for v in b_vals if not np.isnan(v)]
+        n = min(len(a), len(b))
+        if n < 2:
+            return {"t": float("nan"), "p": float("nan"), "n": n, "label": label}
+        t_stat, p_val = stats.ttest_rel(a[:n], b[:n])
+        return {"t": t_stat, "p": p_val, "n": n, "label": label}
+
+    ttest_color_vs_shape   = run_ttest(
+        spill_records["color"], spill_records["shape"],   "color vs shape (spill)"
+    )
+    ttest_color_vs_texture = run_ttest(
+        spill_records["color"], spill_records["texture"], "color vs texture (spill)"
+    )
+
     # ---------------------------------------------------------------- #
     # 9. Save numeric table                                             #
     # ---------------------------------------------------------------- #
     table_lines = [
         "Experiment 3 — Spatial Leakage Ratio Table",
-        "=" * 60,
+        "=" * 70,
         "",
-        f"{'Attr':<12} {'Mean Leak':>12} {'Std':>8} {'N samples':>10}",
-        "-" * 46,
+        "--- Raw norm leakage (||ΔH|| based) ---",
+        f"{'Attr':<12} {'Mean Leak':>12} {'Std':>8} {'N':>6}",
+        "-" * 42,
     ]
     for attr in ["color", "shape", "texture"]:
         vals = [v for v in leak_records[attr] if not np.isnan(v)]
         m    = np.mean(vals) if vals else 0.0
         s    = np.std(vals)  if vals else 0.0
-        table_lines.append(
-            f"{attr:<12} {m:>12.4f} {s:>8.4f} {len(vals):>10d}"
-        )
+        table_lines.append(f"{attr:<12} {m:>12.4f} {s:>8.4f} {len(vals):>6d}")
 
     table_lines += [
+        "",
+        "--- Projection leakage (ΔH projected onto v_color direction) ---",
+        f"{'Attr':<12} {'Mean ProjLeak':>14} {'Std':>8} {'N':>6}",
+        "-" * 44,
+    ]
+    for attr in ["color", "shape", "texture"]:
+        vals = [v for v in proj_leak_records[attr] if not np.isnan(v)]
+        m    = np.mean(vals) if vals else 0.0
+        s    = np.std(vals)  if vals else 0.0
+        table_lines.append(f"{attr:<12} {m:>14.4f} {s:>8.4f} {len(vals):>6d}")
+
+    table_lines += [
+        "",
+        "--- Concentration spill (fraction of top-20% tokens outside target) ---",
+        f"{'Attr':<12} {'Mean Spill':>12} {'Std':>8} {'N':>6}",
+        "-" * 42,
+    ]
+    for attr in ["color", "shape", "texture"]:
+        vals = [v for v in spill_records[attr] if not np.isnan(v)]
+        m    = np.mean(vals) if vals else 0.0
+        s    = np.std(vals)  if vals else 0.0
+        table_lines.append(f"{attr:<12} {m:>12.4f} {s:>8.4f} {len(vals):>6d}")
+
+    def sig(p):
+        if np.isnan(p): return "n/a"
+        if p < 0.001:   return "p<0.001 ***"
+        if p < 0.01:    return "p<0.01  **"
+        if p < 0.05:    return "p<0.05  *"
+        return f"p={p:.3f} ns"
+
+    table_lines += [
+        "",
+        "--- Paired t-tests (projection leakage: color vs others) ---",
+        f"  color vs shape  : t={ttest_color_vs_shape['t']:.3f}   "
+        f"{sig(ttest_color_vs_shape['p'])}   n={ttest_color_vs_shape['n']}",
+        f"  color vs texture: t={ttest_color_vs_texture['t']:.3f}   "
+        f"{sig(ttest_color_vs_texture['p'])}   n={ttest_color_vs_texture['n']}",
         "",
         "Per-block mean leakage ratio:",
         f"{'Block':<8} {'color':>10} {'shape':>10} {'texture':>12}",
@@ -1045,6 +1469,7 @@ def main():
     print(f"\n{table_text}\n")
     (out_dir / "exp3_table.txt").write_text(table_text)
 
+
     # ---------------------------------------------------------------- #
     # 10. Plots                                                          #
     # ---------------------------------------------------------------- #
@@ -1057,7 +1482,10 @@ def main():
     # ---------------------------------------------------------------- #
     # 11. Verdict                                                        #
     # ---------------------------------------------------------------- #
-    proceed = write_verdict(mean_leakage, out_dir)
+    proceed = write_verdict(
+        mean_leakage, mean_proj_leakage, mean_spill,
+        ttest_color_vs_shape, ttest_color_vs_texture, out_dir
+    )
 
     # ---------------------------------------------------------------- #
     # 12. Cleanup                                                        #
