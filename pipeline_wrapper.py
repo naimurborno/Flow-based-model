@@ -61,7 +61,7 @@ class SD3PipelineWrapper:
             text_encoder_3   = None,
             tokenizer_3      = None,
         ).to(self.device)
-        self.pipe.enable_model_cpu_offload()
+        # self.pipe.enable_model_cpu_offload()
 
         self.tokenizer      = self.pipe.tokenizer
         self.tokenizer_2    = self.pipe.tokenizer_2

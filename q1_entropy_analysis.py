@@ -16,7 +16,7 @@ Correct Q1 experiment design:
   STEP 3 — After all prompts, compare:
               entropy at lock-in moments  (early steps + high sim)
               vs entropy at non-lock-in moments
-              Mann-Whitney U test + violin plot
+               
 
   WHY LAYERS 12 & 14:
     DAVE's block-wise analysis (slide 5) showed these two blocks have the
@@ -37,7 +37,7 @@ from scipy.stats import mannwhitneyu
 
 # ---- Constants ---------------------------------------------------------- #
 TARGET_LAYERS        = [12, 14]
-LOCKIN_SIM_THRESHOLD = 0.90
+LOCKIN_SIM_THRESHOLD = 0.998
 EARLY_T_THRESHOLD    = 700
 # ------------------------------------------------------------------------- #
 
