@@ -48,9 +48,9 @@ COLOR_PROMPTS = [
         "objects":  ["cube", "sphere"],
         "colors":   ["red", "blue"],
         "target_colors": {
-            "red":  torch.tensor([ 0.45, -0.30]),
-            "blue": torch.tensor([-0.35,  0.40]),
-        },
+          "red":  torch.tensor([-3.2734, -0.7690]),
+          "blue":  torch.tensor([-0.0637, +2.3184]),
+          },
     },
     {
         "prompt":   "a green apple and a yellow banana on a wooden table",
@@ -58,14 +58,14 @@ COLOR_PROMPTS = [
         "objects":  ["apple", "banana"],
         "colors":   ["green", "yellow"],
         "target_colors": {
-            "green":  torch.tensor([ 0.30,  0.25]),
-            "yellow": torch.tensor([ 0.40, -0.10]),
+            "green":  torch.tensor([-0.7212, -1.7686]),
+            "yellow": torch.tensor([+1.2285, -0.0762]),
         },
     },
 ]
 
 # SD3 VAE: 16 latent channels. Channels 8-9 carry chromatic information.
-CHROMA_PAIR = [8, 9]
+CHROMA_PAIR = [2, 3]
 
 
 # ═══════════════════════════════════════════════════════════════════════ #
