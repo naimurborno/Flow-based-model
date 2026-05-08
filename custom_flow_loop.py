@@ -46,6 +46,10 @@ class FlowMatchingLoop:
         pooled_embeddings: torch.Tensor = None,
     ) -> Dict[str, Any]:
 
+        # Reset scheduler state for each new prompt
+        self.scheduler.set_timesteps(self.num_steps)
+        self.timesteps = self.scheduler.timesteps
+
         trajectory = []
 
         for i, t in enumerate(self.timesteps):

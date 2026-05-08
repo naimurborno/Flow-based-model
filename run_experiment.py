@@ -2,9 +2,12 @@
 run_experiment.py  (Flow Matching + Q1 Entropy Analysis)
 ---------------------------------------------------------
 Entry point. After all prompts are generated, calls Q1 analyzer
-to compute Pearson r(entropy, DC) and save plots.
+to compute entropy vs DC lock-in analysis and save plots.
 
-Q1 change: two lines added at the end of main().
+Q1 fixes applied:
+  - Seed loop per prompt so Q1EntropyAnalyzer collects n_seeds runs
+  - compute_lockin() called after each prompt's seeds are done
+  - final_analysis() used instead of broken _plot() call
 """
 
 import torch
@@ -50,15 +53,17 @@ def main():
     # 2. Build flow loop — pass analyzer so it updates current_step      #
     # ------------------------------------------------------------------ #
     flow_loop = FlowMatchingLoop(
-        unet       = wrapper.transformer,
-        scheduler  = wrapper.scheduler,
-        cfg        = cfg,
-        device     = args.device,
-        q1_analyzer = wrapper.q1_analyzer,   # ← Q1 addition
+        unet        = wrapper.transformer,
+        scheduler   = wrapper.scheduler,
+        cfg         = cfg,
+        device      = args.device,
+        q1_analyzer = wrapper.q1_analyzer,
     )
 
+    n_seeds = wrapper.q1_analyzer.n_seeds
+
     # ------------------------------------------------------------------ #
-    # 3. Generate all prompts                                             #
+    # 3. Generate all prompts × all seeds                                 #
     # ------------------------------------------------------------------ #
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     all_results = []
@@ -70,29 +75,43 @@ def main():
             prompt          = prompt,
             negative_prompt = cfg.get("negative_prompt", ""),
         )
-        latents = wrapper.get_initial_latents(seed=args.seed + i)
 
-        result = flow_loop.run(
-            latents           = latents,
-            text_embeddings   = prompt_embeds,
-            pooled_embeddings = pooled_embeds,
-        )
+        # FIX: loop over n_seeds so Q1 can compute pairwise DC cosine similarity
+        for seed_idx in range(n_seeds):
+            print(f"  [Seed {seed_idx+1}/{n_seeds}]")
 
-        image    = wrapper.decode_latents(result["latents"])
-        out_path = Path(args.output_dir) / f"output_{i:03d}.png"
-        image.save(out_path)
-        print(f"  Saved → {out_path}")
+            # Tell the analyzer which prompt/seed we're on
+            wrapper.q1_analyzer.current_prompt = i
+            wrapper.q1_analyzer.current_seed   = seed_idx
 
-        all_results.append({"prompt": prompt, "latents": result["latents"]})
+            latents = wrapper.get_initial_latents(seed=args.seed + seed_idx)
+
+            result = flow_loop.run(
+                latents           = latents,
+                text_embeddings   = prompt_embeds,
+                pooled_embeddings = pooled_embeds,
+            )
+
+            # Save only the first seed's image as the representative output
+            if seed_idx == 0:
+                image    = wrapper.decode_latents(result["latents"])
+                out_path = Path(args.output_dir) / f"output_{i:03d}.png"
+                image.save(out_path)
+                print(f"  Saved → {out_path}")
+
+            all_results.append({"prompt": prompt, "latents": result["latents"]})
+
+        # FIX: compute lock-in scores after all seeds for this prompt are done
+        wrapper.q1_analyzer.compute_lockin(i, flow_loop.num_steps)
 
     save_results(all_results, args.output_dir)
 
     # ------------------------------------------------------------------ #
     # 4. Q1 Analysis — runs after all prompts are done                   #
     # ------------------------------------------------------------------ #
-    print("\n[Q1] Running entropy vs DC correlation analysis...")
-    wrapper.q1_analyzer.plot(output_dir=args.output_dir)   # ← Q1 addition
-    wrapper.q1_analyzer.remove_hooks()                     # ← Q1 addition
+    print("\n[Q1] Running entropy vs DC lock-in analysis...")
+    wrapper.q1_analyzer.final_analysis(output_dir=args.output_dir)  # FIX: was _plot()
+    wrapper.q1_analyzer.remove_hooks()
 
     print(f"\n[Done] Results saved to {args.output_dir}")
 
