@@ -1,82 +1,105 @@
-# config.yaml — Flow Matching (SD3 / FLUX-style) Zero-Shot Experiment
+# config.yaml — Multi-Model Inference Config
+#
+# Supported model_name values:
+#   flux         → FLUX.1-dev / FLUX.1-schnell  (Black Forest Labs)
+#   sd           → Stable Diffusion 1.x / 2.x   (RunwayML / StabilityAI)
+#   sd3          → Stable Diffusion 3.x          (StabilityAI)
+#   sana         → SANA                          (NVIDIA)
+#   lumina       → Lumina-T2X                    (Alpha-VLLM)
+#   janus        → Janus / Janus-Pro             (DeepSeek)
+#   cogvideo     → CogVideoX (VIDEO output)      (Zhipu AI)
+#   mini_gemini  → Mini-Gemini (VLM, TEXT output)(CUHK)
 
-# ---- Model ----
-model_id:  "stabilityai/stable-diffusion-3-medium-diffusers"
-# Alternatives:
-#   "black-forest-labs/FLUX.1-dev"       ← FLUX (flow matching, DiT)
-#   "stabilityai/stable-diffusion-3-medium-diffusers"  ← SD3 (flow matching)
+# ── Active model ────────────────────────────────────────────────────
+model_name: "sd3"
+model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"
 
-# ---- Prompts ----
+# ── Swap examples (uncomment one block at a time) ────────────────────
+#
+# FLUX:
+# model_name: "flux"
+# model_id:   "black-forest-labs/FLUX.1-dev"
+#
+# SD 1.5:
+# model_name: "sd"
+# model_id:   "runwayml/stable-diffusion-v1-5"
+#
+# SD 2.1:
+# model_name: "sd"
+# model_id:   "stabilityai/stable-diffusion-2-1"
+#
+# SANA:
+# model_name: "sana"
+# model_id:   "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+#
+# Lumina:
+# model_name: "lumina"
+# model_id:   "Alpha-VLLM/Lumina-Next-SFT-diffusers"
+#
+# Janus:
+# model_name: "janus"
+# model_id:   "deepseek-ai/Janus-Pro-7B"
+#
+# CogVideo (outputs .mp4):
+# model_name: "cogvideo"
+# model_id:   "THUDM/CogVideoX-5b"
+# output:     "output.mp4"
+#
+# Mini-Gemini (outputs .txt):
+# model_name: "mini_gemini"
+# model_id:   "YanweiLi/MGM-7B"
+# output:     "output.txt"
+
+# ── Device & seed ────────────────────────────────────────────────────
+device: "cuda"   # cuda | cpu | mps
+seed:   42
+
+# ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
 prompts:
   - "a photo of an astronaut riding a horse on mars"
   - "a futuristic city at night, neon lights, cinematic"
   - "a red apple on a white marble table, studio lighting"
   - "an old wooden cabin in a snowy forest at dawn"
   - "a golden retriever running on a beach at sunset"
-  - "a dense rainforest with sunlight filtering through leaves"
-  - "a medieval castle on a cliff above stormy ocean"
-  - "a bowl of ramen with steam rising, soft lighting"
-  - "a lone lighthouse on rocky coast, foggy morning"
-  - "a crowded tokyo street crossing, rain, umbrellas"
-  - "a green parrot perched on a jungle branch"
-  - "a vintage red car parked on a cobblestone street"
-  - "a woman in a blue dress reading under a willow tree"
-  - "an underwater coral reef with colorful tropical fish"
-  - "a volcano erupting at night with lava flows"
-  - "a white cat sleeping on a sunny windowsill"
-  - "a glass of orange juice with ice, condensation droplets"
-  - "a hot air balloon over lavender fields in provence"
-  - "a robot chef cooking in a modern kitchen"
-  - "an arctic landscape with aurora borealis and polar bears"
-  - "a rusty abandoned train in an overgrown field"
-  - "a samurai standing in bamboo forest, misty morning"
-  - "a pizza fresh out of a wood-fired oven"
-  - "a child flying a kite on a green hillside"
-  - "a grand piano on an empty stage under a spotlight"
-  - "a tiger drinking from a river in dense jungle"
-  - "a market stall with colorful spices and fruits"
-  - "a spaceship launching with fire and smoke"
-  - "a sunflower field under dramatic storm clouds"
-  - "a cozy fireplace with books and a cup of tea"
-  - "a surfer riding a large wave at sunrise"
-  - "an elephant herd crossing a dry savanna"
-  - "a snowy mountain peak at golden hour"
-  - "a street musician playing violin in the rain"
-  - "a library with towering bookshelves and spiral staircases"
-  - "a beekeeper tending hives in a wildflower meadow"
-  - "a neon-lit sushi bar in osaka at midnight"
-  - "a roman colosseum at sunset with dramatic sky"
-  - "a black horse galloping through a misty valley"
-  - "a scientist in a glowing blue laboratory"
-  - "a waterfall cascading into a turquoise pool"
-  - "a farmer harvesting wheat at golden hour"
-  - "a crowded carnival with ferris wheel and lights at night"
-  - "a stone bridge over a river in autumn forest"
-  - "a submarine interior with glowing instruments"
-  - "a ballet dancer on stage with dramatic lighting"
-  - "a desert sand dune with a lone camel at sunset"
-  - "a fish market at dawn with workers and ice"
-  - "a glowing jellyfish in deep dark ocean"
-  - "a treehouse in a giant oak tree on a summer day"
 
 negative_prompt: "blurry, low quality, ugly, deformed"
 
-# ---- Generation ----
+# ── Output path ──────────────────────────────────────────────────────
+output: "output.png"
+
+# ── Image generation ─────────────────────────────────────────────────
 generation:
   height: 512
   width:  512
 
-# ---- Flow ODE Solver ----
+# ── Flow / Scheduler (used by sd3, flux, sana, lumina) ───────────────
 flow:
-  num_steps:      50          # Number of Euler/Heun steps along the flow
-  guidance_scale: 7.5         # CFG scale — 1.0 = no guidance
-  solver:         "euler"     # euler | heun   (heun = 2nd-order, better quality at same steps)
-  t_start:        1.0         # Start time  (pure noise)
-  t_end:          0.0         # End time    (clean image)
-  # Flow matching uses linear interpolation between noise and data:
-  #   x(t) = (1 - t) * x_data  +  t * x_noise
-  # The network predicts the velocity:
-  #   v_θ(x_t, t) = x_data - x_noise  (target direction of the flow)
+  num_steps:      50
+  guidance_scale: 7.5
+  solver:         "euler"    # euler | heun
+  t_start:        1.0
+  t_end:          0.0
 
-# ---- Misc ----
-save_trajectory: false   # save latents at every step (uses more memory)
+# ── Model-specific extra kwargs ──────────────────────────────────────
+# These are passed through to the model loader as opts["model_kwargs"].
+# Add any model-specific settings here.
+model_kwargs: {}
+
+# Janus example:
+# model_kwargs:
+#   cfg_weight:  5.0
+#   temperature: 1.0
+#   top_p:       1.0
+
+# CogVideo example:
+# model_kwargs:
+#   num_frames: 49
+#   fps:        8
+
+# Mini-Gemini example (optional image input):
+# model_kwargs:
+#   image_path:     "my_image.jpg"
+#   max_new_tokens: 512
+
+# ── Trajectory saving (run_experiment.py only) ───────────────────────
+save_trajectory: false

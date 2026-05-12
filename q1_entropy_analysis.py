@@ -348,3 +348,83 @@ class Q1EntropyAnalyzer:
         plt.savefig(out_path, dpi=150)
         plt.close()
         print(f"[Q1] Plot saved → {out_path}")
+
+        self._plot_scatter(early, output_dir)
+
+    # ================================================================== #
+    #  SCATTER: Locked vs Not-Locked entropy data points                 #
+    # ================================================================== #
+
+    def _plot_scatter(self, early: pd.DataFrame, output_dir: str):
+        """
+        Scatter plot: X = mean_entropy, Y = lockin_sim
+        Each point is one (prompt, step, layer) observation in early steps.
+        Color encodes lock-in status. Split into two subplots by layer.
+        Saved separately as q1_scatter_lockin_vs_entropy.png
+        """
+        if early.empty:
+            print("[Q1] Scatter: no early-step data to plot.")
+            return
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+
+        layer_info = {
+            12: {"ax": axes[0], "color_locked": "#d62728", "color_free": "#1f77b4"},
+            14: {"ax": axes[1], "color_locked": "#e377c2", "color_free": "#2ca02c"},
+        }
+
+        for layer_idx, info in layer_info.items():
+            ax      = info["ax"]
+            sub     = early[early["layer"] == layer_idx]
+            locked  = sub[sub["is_lockin"]]
+            free    = sub[~sub["is_lockin"]]
+
+            ax.scatter(
+                free["mean_entropy"], free["lockin_sim"],
+                c=info["color_free"], alpha=0.45, s=18,
+                label=f"Not locked  (n={len(free)})", zorder=2,
+            )
+            ax.scatter(
+                locked["mean_entropy"], locked["lockin_sim"],
+                c=info["color_locked"], alpha=0.65, s=22,
+                label=f"DC Locked   (n={len(locked)})", zorder=3,
+            )
+
+            ax.axhline(
+                LOCKIN_SIM_THRESHOLD, color="black",
+                linestyle="--", linewidth=1.2,
+                label=f"Threshold ({LOCKIN_SIM_THRESHOLD})",
+            )
+
+            # Annotate mean entropy per group
+            if len(locked) > 0:
+                ax.axvline(
+                    locked["mean_entropy"].mean(),
+                    color=info["color_locked"], linestyle=":",
+                    linewidth=1.2, alpha=0.8,
+                    label=f"Locked mean entropy = {locked['mean_entropy'].mean():.3f}",
+                )
+            if len(free) > 0:
+                ax.axvline(
+                    free["mean_entropy"].mean(),
+                    color=info["color_free"], linestyle=":",
+                    linewidth=1.2, alpha=0.8,
+                    label=f"Not-locked mean entropy = {free['mean_entropy'].mean():.3f}",
+                )
+
+            ax.set_xlabel("Text→Image Attention Entropy", fontsize=11)
+            ax.set_ylabel("DC Lock-in Cosine Similarity (across seeds)", fontsize=11)
+            ax.set_title(f"Layer {layer_idx}", fontsize=12, fontweight="bold")
+            ax.legend(fontsize=7.5, loc="lower right")
+            ax.set_ylim(0.97, 1.005)
+
+        fig.suptitle(
+            f"Q1 Scatter: DC Lock-in vs Entropy (early steps t > {EARLY_T_THRESHOLD})\n"
+            "Red/Pink = DC Locked  |  Blue/Green = Not Locked",
+            fontsize=13, fontweight="bold",
+        )
+        plt.tight_layout()
+        scatter_path = os.path.join(output_dir, "q1_scatter_lockin_vs_entropy.png")
+        plt.savefig(scatter_path, dpi=150)
+        plt.close()
+        print(f"[Q1] Scatter plot saved → {scatter_path}")
