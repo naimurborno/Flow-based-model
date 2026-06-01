@@ -76,6 +76,7 @@ def resolve_args(args, cfg: dict) -> dict:
         "device":          device,
         # model-specific extras (pass through wholesale)
         "model_kwargs":    cfg.get("model_kwargs", {}),
+        "_cfg": cfg        
     }
 
 
@@ -170,40 +171,65 @@ def run_sd(opts: dict):
 
 
 # ─── Stable Diffusion 3 ───────────────────────────────────────────────
+# @register_model("sd3")
+# def run_sd3(opts: dict):
+#     """
+#     Stable Diffusion 3 (Flow Matching + MMDiT)
+#     Recommended model_id: "stabilityai/stable-diffusion-3-medium-diffusers"
+#                        or "stabilityai/stable-diffusion-3.5-large"
+#     """
+#     from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
+
+#     print(f"[SD3] Loading {opts['model_id']}...")
+#     pipe = StableDiffusion3Pipeline.from_pretrained(
+#         opts["model_id"],
+#         torch_dtype    = torch.float16,
+#         text_encoder_3 = None,   # skip T5 to save VRAM
+#         tokenizer_3    = None,
+#         **opts["model_kwargs"],
+#     ).to(opts["device"])
+
+#     # Swap to explicit flow scheduler
+#     pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config)
+
+#     generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
+
+#     print("[SD3] Generating...")
+#     result = pipe(
+#         prompt              = opts["prompt"],
+#         negative_prompt     = opts["negative_prompt"],
+#         height              = opts["height"],
+#         width               = opts["width"],
+#         num_inference_steps = opts["num_steps"],
+#         guidance_scale      = opts["guidance_scale"],
+#         generator           = generator,
+#     )
+#     save_image(result.images[0], opts["output"])
 @register_model("sd3")
 def run_sd3(opts: dict):
     """
     Stable Diffusion 3 (Flow Matching + MMDiT)
     Recommended model_id: "stabilityai/stable-diffusion-3-medium-diffusers"
                        or "stabilityai/stable-diffusion-3.5-large"
+ 
+    Routing:
+      stochastic_sampler.enabled: true  → SD3PipelineWrapper → StochasticVelocitySampler
+      stochastic_sampler.enabled: false → SD3PipelineWrapper → standard diffusers pipe()
     """
-    from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
-
-    print(f"[SD3] Loading {opts['model_id']}...")
-    pipe = StableDiffusion3Pipeline.from_pretrained(
-        opts["model_id"],
-        torch_dtype    = torch.float16,
-        text_encoder_3 = None,   # skip T5 to save VRAM
-        tokenizer_3    = None,
-        **opts["model_kwargs"],
-    ).to(opts["device"])
-
-    # Swap to explicit flow scheduler
-    pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config)
-
-    generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
-
+    from pipeline_wrapper import SD3PipelineWrapper
+ 
+    cfg = opts["_cfg"]   # full config dict passed through from main()
+ 
+    wrapper = SD3PipelineWrapper(cfg=cfg, device=opts["device"])
+    wrapper.load()
+ 
     print("[SD3] Generating...")
-    result = pipe(
-        prompt              = opts["prompt"],
-        negative_prompt     = opts["negative_prompt"],
-        height              = opts["height"],
-        width               = opts["width"],
-        num_inference_steps = opts["num_steps"],
-        guidance_scale      = opts["guidance_scale"],
-        generator           = generator,
+    image = wrapper.generate(
+        prompt          = opts["prompt"],
+        negative_prompt = opts["negative_prompt"],
+        seed            = opts["seed"],
     )
-    save_image(result.images[0], opts["output"])
+    save_image(image, opts["output"])
 
 
 # ─── SANA ─────────────────────────────────────────────────────────────

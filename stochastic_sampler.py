@@ -70,26 +70,36 @@ class StochasticVelocitySampler:
         latents           : torch.Tensor,
         text_embeddings   : torch.Tensor,
         pooled_embeddings : Optional[torch.Tensor] = None,
-    ) -> Dict[str, Any]:
+        ) -> Dict[str, Any]:
 
         self.scheduler.set_timesteps(self.num_steps)
-        self.timesteps = self.scheduler.timesteps
+        # Convert discrete timesteps (1000 -> 0) into continuous flow time (0.0 -> 1.0)
+        # Flow matching steps from t=0 (pure noise) to t=1 (clean image)
+        raw_timesteps = self.scheduler.timesteps.float()
+        
+        # Maps 1000->0 down to a continuous 0.0 -> 1.0 forward tracking trajectory
+        scaled_timesteps = (1000.0 - raw_timesteps) / 1000.0
 
         trajectory   = []
-        chosen_log   = []   # track which k* was chosen each step
+        chosen_log   = []   
 
-        for i, t in enumerate(self.timesteps):
+        for i, t_discrete in enumerate(self.scheduler.timesteps):
+            t_discrete_val = t_discrete.item()
 
-            t_val = t.item() if hasattr(t, "item") else float(t)
+            # --- THE FIX: Use native continuous sigmas for exact dt ---
+            # sigmas go from 1.0 (pure noise) down to 0.0 (clean image)
+            sigma_curr = self.scheduler.sigmas[i].item()
+            sigma_next = self.scheduler.sigmas[i + 1].item()
+            
+            # dt will be a small negative fraction (e.g., -0.02), naturally pulling the noise OUT!
+            delta_t = sigma_next - sigma_curr
 
-            # ── Step 2: baseline velocity (one forward pass) ──────────── #
-            t_batch = t.reshape(1).expand(
+            # ── Step 1: Baseline velocity ────────────────────────────── #
+            t_batch = t_discrete.reshape(1).expand(
                 (2 if self.do_cfg else 1)
             ).to(self.device)
 
-            latent_input = (
-                torch.cat([latents] * 2) if self.do_cfg else latents
-            )
+            latent_input = torch.cat([latents] * 2) if self.do_cfg else latents
 
             with torch.no_grad():
                 raw_output = self._forward(
@@ -97,73 +107,60 @@ class StochasticVelocitySampler:
                 )
 
             vbase = self._apply_cfg(raw_output) if self.do_cfg else raw_output
-            # vbase shape: [1, C, H, W]
 
-            # ── Step 3: branch K velocity candidates ─────────────────── #
-            # Use iteration index i for σt so noise decays from high→zero
-            # regardless of whether timesteps are ascending or descending.
-            # i=0 (start, t=1000): σ=σ_max; i=num_steps-1 (end, t≈0): σ≈0
-            sigma_t = self.sigma_max * (1.0 - i / max(self.num_steps - 1, 1))
+            # ── Step 2: Branch Candidates ────────────────────────────── #
+            # Exploration noise decays naturally as sigma_curr approaches 0
+            noise_scale = self.sigma_max * sigma_curr
 
-            noise   = torch.randn(
-                self.K, *vbase.shape[1:],
-                device=self.device, dtype=vbase.dtype
-            )                                              # [K, C, H, W]
-            vbase_k = vbase.expand(self.K, -1, -1, -1)   # [K, C, H, W]
-            ut_k    = vbase_k + sigma_t * noise           # [K, C, H, W]
+            noise = torch.randn(
+                self.K, *vbase.shape[1:], device=self.device, dtype=vbase.dtype
+            )                                                             
+            vbase_k = vbase.expand(self.K, -1, -1, -1)                    
+            ut_k    = vbase_k + noise_scale * noise                           
 
-            # ── Step 4: Euler look-ahead ──────────────────────────────── #
-            if i < len(self.timesteps) - 1:
-                delta_t = (self.timesteps[i + 1] - t).item()
-            else:
-                delta_t = -t_val   # last step: go to 0
-
+            # ── Step 3: Precise Continuous Delta-T Look-Ahead ────────── #
             xt_k = latents.expand(self.K, -1, -1, -1) + ut_k * delta_t
-            # xt_k shape: [K, C, H, W]
 
-            # ── Step 5: R_entropy via centroid trick (O(K)) ───────────── #
-            centroid_x  = xt_k.mean(dim=0, keepdim=True)          # [1,C,H,W]
-            dist_x      = ((xt_k - centroid_x) ** 2).sum(
-                dim=(1, 2, 3)
-            )                                                       # [K]
-            r_entropy   = self.K * dist_x                          # [K]
+            # ── Step 4: R_entropy via centroid trick (FP32 cast safe) ── #
+            centroid_x  = xt_k.mean(dim=0, keepdim=True)                  
+            dist_x      = ((xt_k.float() - centroid_x.float()) ** 2).sum(dim=(1, 2, 3))   
+            r_entropy   = self.K * dist_x                                  
 
-            # ── Step 6: R_fidelity (one batched forward pass) ─────────── #
-            if i < len(self.timesteps) - 1:
-                t_next     = self.timesteps[i + 1]
-                t_next_val = t_next.item()
+            # ── Step 5: R_fidelity ───────────────────────────────────── #
+            if i < len(self.scheduler.timesteps) - 1:
+                t_next_discrete = self.scheduler.timesteps[i + 1]
             else:
-                t_next_val = 0.0
-                t_next     = torch.tensor(0.0, device=self.device)
+                t_next_discrete = torch.tensor(0.0, device=self.device)
 
             r_fidelity = self._compute_fidelity(
-                xt_k, ut_k, t_next, t_next_val, text_embeddings, pooled_embeddings
-            )                                                       # [K]
+                xt_k=xt_k, 
+                ut_k=ut_k, 
+                t_next=t_next_discrete, 
+                t_next_val=t_next_discrete.item(), 
+                text_embeddings=text_embeddings, 
+                pooled_embeddings=pooled_embeddings
+            )                                                             
 
-            # ── Step 7: total reward + Gibbs policy ───────────────────── #
-            r_total = r_fidelity + self.lam * r_entropy            # [K]
+            # ── Step 6: Gibbs Policy ─────────────────────────────────── #
+            r_total = r_fidelity + self.lam * r_entropy                  
 
-            # normalize before softmax; use 1e-4 floor to prevent logit
-            # explosion when all K rewards are nearly identical (std ≈ 0)
-            r_total = (r_total - r_total.mean()) / (r_total.std() + 1e-4)
+            r_std = r_total.std()
+            r_std = r_std if r_std > 1e-4 else torch.tensor(1.0, device=self.device)
+            r_total = (r_total - r_total.mean()) / r_std
 
             logits  = self.alpha * r_total
-            probs   = torch.softmax(logits, dim=0)                 # [K]
+            probs   = torch.softmax(logits, dim=0)                        
 
-            # ── Step 8: hard sample one winner ───────────────────────── #
+            # ── Step 7: Selection ────────────────────────────────────── #
             k_star  = torch.multinomial(probs, num_samples=1).item()
-            latents = xt_k[k_star].unsqueeze(0)                    # [1,C,H,W]
+            latents = xt_k[k_star].unsqueeze(0)                            
 
-            chosen_log.append({"step": i, "t": t_val, "k_star": k_star,
-                                "prob": probs[k_star].item()})
-
-            if self.cfg.get("save_trajectory", False):
-                trajectory.append(latents.clone().cpu())
+            chosen_log.append({"step": i, "t": t_discrete_val, "k_star": k_star, "prob": probs[k_star].item()})
 
             if (i + 1) % 10 == 0 or i == 0:
                 print(
-                    f"  [Stochastic] step {i+1:>3}/{self.num_steps} | "
-                    f"t={t_val:.1f} | σ={sigma_t:.4f} | "
+                    f"  [Stochastic] step {i+1:>3}/{len(self.scheduler.timesteps)} | "
+                    f"t_disc={t_discrete_val:.1f} | dt={delta_t:.4f} | σ={noise_scale:.4f} | "
                     f"k*={k_star} (p={probs[k_star].item():.3f}) | "
                     f"latent_mean={latents.mean():.4f}"
                 )
@@ -227,7 +224,9 @@ class StochasticVelocitySampler:
             v_manifold = v_uncond + self.guidance_scale * (v_cond - v_uncond)
         else:
             v_manifold = raw   # [K, C, H, W]
-
+        
+        v_manifold = v_manifold.float()
+        ut_k       = ut_k.float()
         # per-candidate L2 mismatch → scalar reward
         diff       = (v_manifold - ut_k) ** 2              # [K, C, H, W]
         r_fidelity = -diff.sum(dim=(1, 2, 3))              # [K]

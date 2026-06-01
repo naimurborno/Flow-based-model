@@ -57,15 +57,11 @@ seed:   42
 # ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
 prompts:
   - "a photo of an astronaut riding a horse on mars"
-  - "a futuristic city at night, neon lights, cinematic"
-  - "a red apple on a white marble table, studio lighting"
-  - "an old wooden cabin in a snowy forest at dawn"
-  - "a golden retriever running on a beach at sunset"
 
 negative_prompt: "blurry, low quality, ugly, deformed"
 
 # ── Output path ──────────────────────────────────────────────────────
-output: "output.png"
+output: "stochastic_output.png"
 
 # ── Image generation ─────────────────────────────────────────────────
 generation:
@@ -108,8 +104,8 @@ save_trajectory: false
 # Set enabled: true to replace the standard diffusers pipeline with the
 # stochastic branching sampler defined in stochastic_sampler.py.
 stochastic_sampler:
-  enabled:   false   # true | false
-  K:         5       # number of velocity branches per step
-  sigma_max: 1.0     # peak noise magnitude at step 0
-  lam:       0.5     # λ — entropy reward weight
-  alpha:     1.0     # α — Gibbs temperature
+  enabled:   true   # true | false
+  K:         6       # number of velocity branches per step
+  sigma_max: 0.15    # peak noise magnitude at step 0
+  lam:       1.5     # λ — entropy reward weight
+  alpha:     0.5    # α — Gibbs temperature

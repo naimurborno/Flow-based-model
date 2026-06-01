@@ -24,7 +24,7 @@ import torch.nn as nn
 from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
 from PIL import Image
 
-from q1_entropy_analysis import Q1EntropyAnalyzer   # ← Q1 addition
+# from q1_entropy_analysis import Q1EntropyAnalyzer   # ← Q1 addition
 from stochastic_sampler  import StochasticVelocitySampler
 
 
@@ -162,14 +162,20 @@ class SD3PipelineWrapper:
             device    = self.device,
             dtype     = torch.float16,
         )
+        # SD3: raw N(0,I) — no pre-scaling. The transformer operates
+        # directly on unscaled noise; VAE decode handles unscaling.
         return latents
 
     def decode_latents(self, latents: torch.Tensor) -> Image.Image:
+        # SD3 VAE decode convention:
+        #   latents_in = (latents - shift_factor) / scaling_factor
+        # shift_factor re-centers, scaling_factor normalizes variance.
+        scaling_factor = self.vae.config.scaling_factor
+        shift_factor   = getattr(self.vae.config, 'shift_factor', 0.0609)
         latents = latents.to(dtype=torch.float16)
+        latents = (latents - shift_factor) / scaling_factor
         with torch.no_grad():
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor
-            ).sample
+            image = self.vae.decode(latents).sample
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         image = (image[0] * 255).round().astype("uint8")
