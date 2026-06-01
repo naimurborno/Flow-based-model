@@ -25,6 +25,7 @@ from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
 from PIL import Image
 
 from q1_entropy_analysis import Q1EntropyAnalyzer   # ← Q1 addition
+from stochastic_sampler  import StochasticVelocitySampler
 
 
 class SD3PipelineWrapper:
@@ -174,6 +175,78 @@ class SD3PipelineWrapper:
         image = (image[0] * 255).round().astype("uint8")
         from PIL import Image as PILImage
         return PILImage.fromarray(image)
+
+    # ================================================================== #
+    #  GENERATE                                                           #
+    # ================================================================== #
+
+    def generate(self, prompt: str, negative_prompt: str = "", seed: int = 42) -> Image.Image:
+        """
+        Top-level entry point. Reads `stochastic_sampler.enabled` from cfg
+        and routes accordingly:
+
+          stochastic_sampler:
+            enabled: true          ← uses StochasticVelocitySampler
+            K:         5
+            sigma_max: 1.0
+            lam:       0.5
+            alpha:     1.0
+
+          stochastic_sampler:
+            enabled: false         ← uses pipe() directly (standard path)
+        """
+        ss_cfg  = self.cfg.get("stochastic_sampler", {})
+        enabled = ss_cfg.get("enabled", False)
+
+        if enabled:
+            return self._generate_stochastic(prompt, negative_prompt, seed, ss_cfg)
+        else:
+            return self._generate_standard(prompt, negative_prompt, seed)
+
+    def _generate_standard(self, prompt: str, negative_prompt: str, seed: int) -> Image.Image:
+        """Standard diffusers pipeline path — unchanged behaviour."""
+        f_cfg     = self.cfg.get("flow", {})
+        gen_cfg   = self.cfg.get("generation", {})
+        generator = torch.Generator(device=self.device).manual_seed(seed)
+
+        print("[Pipeline] Running standard generation path.")
+        result = self.pipe(
+            prompt              = prompt,
+            negative_prompt     = negative_prompt,
+            height              = gen_cfg.get("height", 512),
+            width               = gen_cfg.get("width",  512),
+            num_inference_steps = f_cfg.get("num_steps", 50),
+            guidance_scale      = f_cfg.get("guidance_scale", 7.5),
+            generator           = generator,
+        )
+        return result.images[0]
+
+    def _generate_stochastic(
+        self, prompt: str, negative_prompt: str, seed: int, ss_cfg: dict
+    ) -> Image.Image:
+        """Stochastic velocity branching path."""
+        print(f"[Pipeline] Running stochastic sampler "
+              f"(K={ss_cfg.get('K', 5)}, "
+              f"σ_max={ss_cfg.get('sigma_max', 1.0)}, "
+              f"λ={ss_cfg.get('lam', 0.5)}, "
+              f"α={ss_cfg.get('alpha', 1.0)}).")
+
+        latents                    = self.get_initial_latents(seed)
+        text_embeddings, pooled    = self.encode_prompt(prompt, negative_prompt)
+
+        sampler = StochasticVelocitySampler(
+            unet      = self.transformer,
+            scheduler = self.scheduler,
+            cfg       = self.cfg,
+            device    = self.device,
+            K         = ss_cfg.get("K",         5),
+            sigma_max = ss_cfg.get("sigma_max", 1.0),
+            lam       = ss_cfg.get("lam",       0.5),
+            alpha     = ss_cfg.get("alpha",     1.0),
+        )
+
+        result  = sampler.run(latents, text_embeddings, pooled)
+        return self.decode_latents(result["latents"])
 
     # ================================================================== #
     #  INTERNALS                                                          #

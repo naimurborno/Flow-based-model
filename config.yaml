@@ -103,3 +103,13 @@ model_kwargs: {}
 
 # ── Trajectory saving (run_experiment.py only) ───────────────────────
 save_trajectory: false
+
+# ── Stochastic Velocity Sampler ──────────────────────────────────────
+# Set enabled: true to replace the standard diffusers pipeline with the
+# stochastic branching sampler defined in stochastic_sampler.py.
+stochastic_sampler:
+  enabled:   false   # true | false
+  K:         5       # number of velocity branches per step
+  sigma_max: 1.0     # peak noise magnitude at step 0
+  lam:       0.5     # λ — entropy reward weight
+  alpha:     1.0     # α — Gibbs temperature

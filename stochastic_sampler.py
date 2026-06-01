@@ -100,8 +100,10 @@ class StochasticVelocitySampler:
             # vbase shape: [1, C, H, W]
 
             # ── Step 3: branch K velocity candidates ─────────────────── #
-            # σt high at t=0 (start of generation), zero at t=1000 (clean)
-            sigma_t = self.sigma_max * (1.0 - t_val / 1000.0)
+            # Use iteration index i for σt so noise decays from high→zero
+            # regardless of whether timesteps are ascending or descending.
+            # i=0 (start, t=1000): σ=σ_max; i=num_steps-1 (end, t≈0): σ≈0
+            sigma_t = self.sigma_max * (1.0 - i / max(self.num_steps - 1, 1))
 
             noise   = torch.randn(
                 self.K, *vbase.shape[1:],
@@ -141,8 +143,9 @@ class StochasticVelocitySampler:
             # ── Step 7: total reward + Gibbs policy ───────────────────── #
             r_total = r_fidelity + self.lam * r_entropy            # [K]
 
-            # normalize before softmax to prevent collapse
-            r_total = (r_total - r_total.mean()) / (r_total.std() + 1e-8)
+            # normalize before softmax; use 1e-4 floor to prevent logit
+            # explosion when all K rewards are nearly identical (std ≈ 0)
+            r_total = (r_total - r_total.mean()) / (r_total.std() + 1e-4)
 
             logits  = self.alpha * r_total
             probs   = torch.softmax(logits, dim=0)                 # [K]
@@ -192,12 +195,21 @@ class StochasticVelocitySampler:
 
         # expand text embeddings to match K (and 2K if CFG)
         if self.do_cfg:
-            # text_embeddings is [2, seq, D] (uncond + cond)
-            # replicate for K candidates → [2K, seq, D]
-            te_k = text_embeddings.repeat_interleave(K, dim=0)   # [2K, seq, D]
-            pe_k = (pooled_embeddings.repeat_interleave(K, dim=0)
-                    if pooled_embeddings is not None else None)
-            latent_input = torch.cat([xt_k, xt_k], dim=0)        # [2K, C, H, W]
+            # text_embeddings is [2, seq, D]: index 0 = uncond, index 1 = cond.
+            # latent_input = [xt_k(uncond half), xt_k(cond half)] → [2K, C, H, W]
+            # so text must follow the same layout: [uncond×K, cond×K]
+            # repeat(K,1,1) tiles the full tensor K times → wrong order.
+            # Correct: split, tile each half separately, then cat.
+            uncond_te, cond_te = text_embeddings[0:1], text_embeddings[1:2]
+            te_k = torch.cat([uncond_te.expand(K, -1, -1),
+                               cond_te.expand(K, -1, -1)], dim=0)   # [2K, seq, D]
+            if pooled_embeddings is not None:
+                uncond_pe, cond_pe = pooled_embeddings[0:1], pooled_embeddings[1:2]
+                pe_k = torch.cat([uncond_pe.expand(K, -1),
+                                   cond_pe.expand(K, -1)], dim=0)   # [2K, D]
+            else:
+                pe_k = None
+            latent_input = torch.cat([xt_k, xt_k], dim=0)           # [2K, C, H, W]
         else:
             te_k         = text_embeddings.expand(K, -1, -1)
             pe_k         = (pooled_embeddings.expand(K, -1)
