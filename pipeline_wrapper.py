@@ -239,7 +239,7 @@ class SD3PipelineWrapper:
 
         latents                    = self.get_initial_latents(seed)
         text_embeddings, pooled    = self.encode_prompt(prompt, negative_prompt)
-
+        
         sampler = StochasticVelocitySampler(
             unet      = self.transformer,
             scheduler = self.scheduler,
@@ -252,7 +252,15 @@ class SD3PipelineWrapper:
         )
 
         result  = sampler.run(latents, text_embeddings, pooled)
-        return self.decode_latents(result["latents"])
+
+        # save trajectory log for plot_trajectory.py
+        # import json
+        # log_path = self.cfg.get("output", "output.png").replace(".png", "_traj.json")
+        # with open(log_path, "w") as f:
+        #     json.dump(result["chosen_log"], f, indent=2)
+        # print(f"[Pipeline] Trajectory log saved → {log_path}")
+
+        # return self.decode_latents(result["latents"])
 
     # ================================================================== #
     #  INTERNALS                                                          #
