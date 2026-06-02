@@ -260,7 +260,7 @@ class SD3PipelineWrapper:
         #     json.dump(result["chosen_log"], f, indent=2)
         # print(f"[Pipeline] Trajectory log saved → {log_path}")
 
-        # return self.decode_latents(result["latents"])
+        return self.decode_latents(result["latents"])
 
     # ================================================================== #
     #  INTERNALS                                                          #
