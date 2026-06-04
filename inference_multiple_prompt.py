@@ -574,12 +574,23 @@ def main():
     else:
         prompts = cfg.get("prompts", [opts["prompt"]])
 
+    # Seeds: CLI --seed overrides; otherwise read list from config; fallback to [42]
+    if args.seed is not None:
+        seeds = [args.seed]
+    else:
+        seeds_cfg = cfg.get("seeds", None)
+        if seeds_cfg is not None:
+            seeds = list(seeds_cfg)
+        else:
+            seeds = [cfg.get("seed", 42)]
+
     out_dir = Path(opts["output"])
     out_dir.mkdir(parents=True, exist_ok=True)
-    n = len(prompts)
 
+    total = len(prompts) * len(seeds)
     print(f"[INFO] Model    : {opts['model_name']} ({opts['model_id']})")
-    print(f"[INFO] Prompts  : {n}")
+    print(f"[INFO] Prompts  : {len(prompts)}  |  Seeds: {seeds}")
+    print(f"[INFO] Total    : {total} image(s)")
     print(f"[INFO] Steps    : {opts['num_steps']} | cfg={opts['guidance_scale']} | solver={opts['solver']}")
     print(f"[INFO] Device   : {opts['device']}")
     print(f"[INFO] Out dir  : {out_dir}")
@@ -587,16 +598,21 @@ def main():
     # Pre-load model once before the loop
     preloaded = _preload_model(model_name, opts)
 
-    for i, prompt in enumerate(prompts):
-        print(f"\n[INFO] ── Prompt {i+1}/{n}: {prompt}")
-
+    idx = 0
+    for prompt in prompts:
         safe_name = prompt.strip().replace(" ", "_")
         safe_name = "".join(c if c.isalnum() or c in "_-" else "" for c in safe_name)
-        safe_name = safe_name[:80] or f"prompt_{i:03d}"
-        out_path  = str(out_dir / f"{safe_name}.png")
+        safe_name = safe_name[:80] or f"prompt_{idx:03d}"
 
-        run_opts = {**opts, "prompt": prompt, "output": out_path, **preloaded}
-        runner(run_opts)
+        for seed in seeds:
+            idx += 1
+            print(f"\n[INFO] ── [{idx}/{total}] Prompt: {prompt}  |  Seed: {seed}")
+
+            out_path = str(out_dir / f"{safe_name}_seed{seed}.png")
+
+            set_seed(seed)
+            run_opts = {**opts, "prompt": prompt, "seed": seed, "output": out_path, **preloaded}
+            runner(run_opts)
 
 
 if __name__ == "__main__":
