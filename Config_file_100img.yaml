@@ -1,0 +1,212 @@
+# config.yaml — Multi-Model Inference Config
+#
+# Supported model_name values:
+#   flux         → FLUX.1-dev / FLUX.1-schnell  (Black Forest Labs)
+#   sd           → Stable Diffusion 1.x / 2.x   (RunwayML / StabilityAI)
+#   sd3          → Stable Diffusion 3.x          (StabilityAI)
+#   sana         → SANA                          (NVIDIA)
+#   lumina       → Lumina-T2X                    (Alpha-VLLM)
+#   janus        → Janus / Janus-Pro             (DeepSeek)
+#   cogvideo     → CogVideoX (VIDEO output)      (Zhipu AI)
+#   mini_gemini  → Mini-Gemini (VLM, TEXT output)(CUHK)
+
+# ── Active model ────────────────────────────────────────────────────
+model_name: "sd3"
+model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"
+
+# ── Swap examples (uncomment one block at a time) ────────────────────
+#
+# FLUX:
+# model_name: "flux"
+# model_id:   "black-forest-labs/FLUX.1-dev"
+#
+# SD 1.5:
+# model_name: "sd"
+# model_id:   "runwayml/stable-diffusion-v1-5"
+#
+# SD 2.1:
+# model_name: "sd"
+# model_id:   "stabilityai/stable-diffusion-2-1"
+#
+# SANA:
+# model_name: "sana"
+# model_id:   "Efficient-Large-Model/Sana_1600M_1024px_diffusers"
+#
+# Lumina:
+# model_name: "lumina"
+# model_id:   "Alpha-VLLM/Lumina-Next-SFT-diffusers"
+#
+# Janus:
+# model_name: "janus"
+# model_id:   "deepseek-ai/Janus-Pro-7B"
+#
+# CogVideo (outputs .mp4):
+# model_name: "cogvideo"
+# model_id:   "THUDM/CogVideoX-5b"
+# output:     "output.mp4"
+#
+# Mini-Gemini (outputs .txt):
+# model_name: "mini_gemini"
+# model_id:   "YanweiLi/MGM-7B"
+# output:     "output.txt"
+
+# ── Device & seed ────────────────────────────────────────────────────
+device: "cuda"   # cuda | cpu | mps
+seed:   42
+
+# ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
+prompts:
+-  "a photo of an astronaut riding a horse on mars"
+-  "A man with a red helmet on a small moped on a dirt road."
+-  "A woman wearing a net on her head cutting a cake."
+-  "A child holding a flowered umbrella and petting a yak."
+-  "A young boy standing in front of a computer keyboard."
+-  "a boy wearing headphones using one computer in a long row of computers"
+-  "A man is in a kitchen making pizzas."
+-  "A woman in a room with a cat."
+-  "A young girl inhales with the intent of blowing out a candle."
+-  "A commercial stainless kitchen with a pot of food cooking."
+-  "Two men wearing aprons working in a commercial-style kitchen."
+-  "Two chefs in a restaurant kitchen preparing food."
+-  "this is a very dark picture of a room with a shelf"
+-  "A kitchen filled with black appliances and lots of counter top space."
+-  "A professional kitchen filled with sinks and appliances."
+-  "A man on a bicycle riding next to a train"
+-  "A narrow kitchen filled with appliances and cooking utensils."
+-  "A kitchen with wood floors and lots of furniture."
+-  "A woman eating vegetables in front of a stove."
+-  "A kitchen is shown with a variety of items on the counters."
+-  "A boy performing a kickflip on his skateboard on a city street."
+-  "A kitchen with a stove, microwave and refrigerator."
+-  "A group of people riding on the back of a loaded red pickup truck."
+-  "A wooden ball on top of a wooden stick."
+-  "Multiple wooden spoons are shown on a table top."
+-  "A large boat filled with mean on wheels."
+-  "several young students working at a desk with multiple computers"
+-  "A man riding an elephant into some water of a creek."
+-  "a couple of women are in a kitchen"
+-  "The woman in the kitchen is holding a huge pan."
+-  "A baby is laying down with a teddy bear."
+-  "a person with a shopping cart on a city street"
+-  "A person on a skateboard and bike at a skate park."
+-  "a blue bike parked on a side walk"
+-  "People riding bicycles down the road approaching a bird."
+-  "A little girl holding a kitten next to a blue fence."
+-  "A toilet and a sink in small bathroom."
+-  "A bicycle store shows two males leaning toward a bike."
+-  "A bathroom that has a broken wall in the shower."
+-  "A shower stall with interesting tile is the focal point."
+-  "A view of a very large bathroom with mirrored walls."
+-  "a long beige bathroom with a door to a bedroom and another to the hallway"
+-  "The view of a large bathroom with a walk in closet."
+-  "A white toilet sitting next to a green wall under a picture."
+-  "A bathroom with an enclosed shower next to a sink and a toilet."
+-  "people on bicycles ride down a busy street"
+-  "This is an image of the inside of a nice bathroom."
+-  "Two dogs are looking up while they stand near the toilet in the bathroom."
+-  "A bathroom with a walk in shower currently under repair."
+-  "The bathroom is clean for the guests to use."
+-  "A white bath tub sitting next to a bathroom sink."
+-  "A full view of a shower with glass."
+-  "A toilet sitting in a bathroom next to a sink."
+-  "a couple of buckets in a white room"
+-  "Blue dust pan and brush on floor next to white commode."
+-  "A bathroom with a sink and toilet and a window."
+-  "There are two sinks next to two mirrors."
+-  "A large porcelain toilet posed with a tan flower pot."
+-  "a gray bicycle is locked to some metal doors"
+-  "A man takes a picture in the bathroom mirror"
+-  "A bathroom with a white toilet sitting next to a bathroom sink."
+-  "A bathroom with two sinks and a shower."
+-  "The bathroom is clean and ready to be used."
+-  "A bath tub sitting next to a sink in a bathroom."
+-  "an image of a cars driving on the highway"
+-  "This shot is of a crowded highway full of traffic"
+-  "Mirror view of a bathroom with a sink and tub."
+-  "A city street filled with traffic and parking lights."
+-  "A white toilet and a sink in a room."
+-  "A bathroom sink shapped like a glass bowl."
+-  "A door opens to a bare, white bathroom."
+-  "A row of parked cars sitting next to parking meters."
+-  "A clean bathroom is seen in this image."
+-  "A bathroom sink sitting under a large mirror."
+-  "A white urinal mounted to a bathroom wall."
+-  "A glazed donut hanging from a metal rod."
+-  "An orange striped tabby cat laying on top of a red vehicle's wheel."
+-  "A large jetliner flying over a traffic filled street."
+-  "A silver and red bus in parking lot next to cars."
+-  "A red helmet is on a yellow toilet in the dirt."
+-  "a little kid riding a skateboard at a park"
+-  "A young man wearing black attire and a flowered tie is standing and smiling."
+-  "A car with some surfboards in a field."
+-  "A man looking down with a backpack on in a house."
+-  "A cat on the lid of a toilet looking perturbed."
+-  "A toilet sitting in a bathroom next to a mirror."
+-  "The shiny motorcycle has been put on display."
+-  "A row of white toilets sitting on top of a dirt ground."
+-  "Bathroom with white fixtures, tiles and corner shower."
+-  "An older building with birds flying near it."
+-  "a motorcycle in a driveway with a vanity license plate"
+-  "A picture of a wooden container with crosses on it."
+-  "There is a man picking bananas next to a street."
+-  "A restroom has a toilet and a decorative sun wall plaque."
+-  "A small closed toilet in a cramped space."
+-  "some horses grazing in front of a church"
+-  "A horse drawn carriage is parked along the curb."
+-  "a toilet on the ground outdoors in front of a house"
+-  "The shiny motorcycle is being shown on a display."
+-  "Horses graze in front of a large building amid snow."
+-  "A large clock tower with a wind indicator on top."
+    
+
+negative_prompt: "blurry, low quality, ugly, deformed"
+
+# ── Output path ──────────────────────────────────────────────────────
+output: "/content/proposed_generated/"
+
+# ── Image generation ─────────────────────────────────────────────────
+generation:
+  height: 512
+  width:  512
+
+# ── Flow / Scheduler (used by sd3, flux, sana, lumina) ───────────────
+flow:
+  num_steps:      50
+  guidance_scale: 7.5
+  solver:         "euler"    # euler | heun
+  t_start:        1.0
+  t_end:          0.0
+
+# ── Model-specific extra kwargs ──────────────────────────────────────
+# These are passed through to the model loader as opts["model_kwargs"].
+# Add any model-specific settings here.
+model_kwargs: {}
+
+# Janus example:
+# model_kwargs:
+#   cfg_weight:  5.0
+#   temperature: 1.0
+#   top_p:       1.0
+
+# CogVideo example:
+# model_kwargs:
+#   num_frames: 49
+#   fps:        8
+
+# Mini-Gemini example (optional image input):
+# model_kwargs:
+#   image_path:     "my_image.jpg"
+#   max_new_tokens: 512
+
+# ── Trajectory saving (run_experiment.py only) ───────────────────────
+save_trajectory: false
+
+# ── Stochastic Velocity Sampler ──────────────────────────────────────
+# Set enabled: true to replace the standard diffusers pipeline with the
+# stochastic branching sampler defined in stochastic_sampler.py.
+stochastic_sampler:
+  enabled:   true   # true | false
+  K:         6       # number of velocity branches per step
+  sigma_max: 0.15    # peak noise magnitude at step 0
+  lam:       1.5     # λ — entropy reward weight
+  alpha:     0.5    # α — Gibbs temperature

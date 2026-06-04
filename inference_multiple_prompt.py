@@ -117,12 +117,14 @@ def run_flux(opts: dict):
     """
     from diffusers import FluxPipeline
 
-    print(f"[FLUX] Loading {opts['model_id']}...")
-    pipe = FluxPipeline.from_pretrained(
-        opts["model_id"],
-        torch_dtype=torch.bfloat16,
-        **opts["model_kwargs"],
-    ).to(opts["device"])
+    pipe = opts.get("_pipe")
+    if pipe is None:
+        print(f"[FLUX] Loading {opts['model_id']}...")
+        pipe = FluxPipeline.from_pretrained(
+            opts["model_id"],
+            torch_dtype=torch.bfloat16,
+            **opts["model_kwargs"],
+        ).to(opts["device"])
 
     generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
 
@@ -148,12 +150,14 @@ def run_sd(opts: dict):
     """
     from diffusers import StableDiffusionPipeline
 
-    print(f"[SD] Loading {opts['model_id']}...")
-    pipe = StableDiffusionPipeline.from_pretrained(
-        opts["model_id"],
-        torch_dtype=torch.float16,
-        **opts["model_kwargs"],
-    ).to(opts["device"])
+    pipe = opts.get("_pipe")
+    if pipe is None:
+        print(f"[SD] Loading {opts['model_id']}...")
+        pipe = StableDiffusionPipeline.from_pretrained(
+            opts["model_id"],
+            torch_dtype=torch.float16,
+            **opts["model_kwargs"],
+        ).to(opts["device"])
 
     generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
 
@@ -211,18 +215,21 @@ def run_sd3(opts: dict):
     Stable Diffusion 3 (Flow Matching + MMDiT)
     Recommended model_id: "stabilityai/stable-diffusion-3-medium-diffusers"
                        or "stabilityai/stable-diffusion-3.5-large"
- 
+
     Routing:
       stochastic_sampler.enabled: true  → SD3PipelineWrapper → StochasticVelocitySampler
       stochastic_sampler.enabled: false → SD3PipelineWrapper → standard diffusers pipe()
     """
     from pipeline_wrapper import SD3PipelineWrapper
- 
-    cfg = opts["_cfg"]   # full config dict passed through from main()
- 
-    wrapper = SD3PipelineWrapper(cfg=cfg, device=opts["device"])
-    wrapper.load()
- 
+
+    cfg = opts["_cfg"]
+
+    # Reuse pre-loaded wrapper if passed in, otherwise load fresh
+    wrapper = opts.get("_wrapper")
+    if wrapper is None:
+        wrapper = SD3PipelineWrapper(cfg=cfg, device=opts["device"])
+        wrapper.load()
+
     print("[SD3] Generating...")
     image = wrapper.generate(
         prompt          = opts["prompt"],
@@ -243,12 +250,14 @@ def run_sana(opts: dict):
     """
     from diffusers import SanaPipeline
 
-    print(f"[SANA] Loading {opts['model_id']}...")
-    pipe = SanaPipeline.from_pretrained(
-        opts["model_id"],
-        torch_dtype=torch.float16,
-        **opts["model_kwargs"],
-    ).to(opts["device"])
+    pipe = opts.get("_pipe")
+    if pipe is None:
+        print(f"[SANA] Loading {opts['model_id']}...")
+        pipe = SanaPipeline.from_pretrained(
+            opts["model_id"],
+            torch_dtype=torch.float16,
+            **opts["model_kwargs"],
+        ).to(opts["device"])
 
     generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
 
@@ -495,6 +504,52 @@ def run_mini_gemini(opts: dict):
 #  MAIN                                                                   #
 # ══════════════════════════════════════════════════════════════════════ #
 
+
+# ══════════════════════════════════════════════════════════════════════ #
+#  PRE-LOADER  (load model once, reuse across prompts)                    #
+# ══════════════════════════════════════════════════════════════════════ #
+
+def _preload_model(model_name: str, opts: dict) -> dict:
+    """
+    Load heavy model components once and return them as a dict that gets
+    merged into run_opts. Each runner checks for these keys and skips
+    re-loading if present.
+    """
+    if model_name == "sd3":
+        from pipeline_wrapper import SD3PipelineWrapper
+        print("[Preload] Loading SD3PipelineWrapper once...")
+        wrapper = SD3PipelineWrapper(cfg=opts["_cfg"], device=opts["device"])
+        wrapper.load()
+        return {"_wrapper": wrapper}
+
+    if model_name == "flux":
+        from diffusers import FluxPipeline
+        print(f"[Preload] Loading FLUX once ({opts['model_id']})...")
+        pipe = FluxPipeline.from_pretrained(
+            opts["model_id"], torch_dtype=torch.bfloat16, **opts["model_kwargs"]
+        ).to(opts["device"])
+        return {"_pipe": pipe}
+
+    if model_name == "sd":
+        from diffusers import StableDiffusionPipeline
+        print(f"[Preload] Loading SD once ({opts['model_id']})...")
+        pipe = StableDiffusionPipeline.from_pretrained(
+            opts["model_id"], torch_dtype=torch.float16, **opts["model_kwargs"]
+        ).to(opts["device"])
+        return {"_pipe": pipe}
+
+    if model_name == "sana":
+        from diffusers import SanaPipeline
+        print(f"[Preload] Loading SANA once ({opts['model_id']})...")
+        pipe = SanaPipeline.from_pretrained(
+            opts["model_id"], torch_dtype=torch.float16, **opts["model_kwargs"]
+        ).to(opts["device"])
+        return {"_pipe": pipe}
+
+    # For models without a preload path, return empty (they reload each time)
+    return {}
+
+
 def main():
     args = parse_args()
     cfg  = load_config(args.config)
@@ -519,27 +574,28 @@ def main():
     else:
         prompts = cfg.get("prompts", [opts["prompt"]])
 
-    base_output = Path(opts["output"])
+    out_dir = Path(opts["output"])
+    out_dir.mkdir(parents=True, exist_ok=True)
     n = len(prompts)
 
     print(f"[INFO] Model    : {opts['model_name']} ({opts['model_id']})")
     print(f"[INFO] Prompts  : {n}")
     print(f"[INFO] Steps    : {opts['num_steps']} | cfg={opts['guidance_scale']} | solver={opts['solver']}")
     print(f"[INFO] Device   : {opts['device']}")
-    print(f"[INFO] Out dir  : {base_output.parent}")
+    print(f"[INFO] Out dir  : {out_dir}")
+
+    # Pre-load model once before the loop
+    preloaded = _preload_model(model_name, opts)
 
     for i, prompt in enumerate(prompts):
         print(f"\n[INFO] ── Prompt {i+1}/{n}: {prompt}")
 
-        # Derive output path: output.png → output_000.png, output_001.png …
-        if n == 1:
-            out_path = str(base_output)
-        else:
-            out_path = str(
-                base_output.parent / f"{base_output.stem}_{i:03d}{base_output.suffix}"
-            )
+        safe_name = prompt.strip().replace(" ", "_")
+        safe_name = "".join(c if c.isalnum() or c in "_-" else "" for c in safe_name)
+        safe_name = safe_name[:80] or f"prompt_{i:03d}"
+        out_path  = str(out_dir / f"{safe_name}.png")
 
-        run_opts = {**opts, "prompt": prompt, "output": out_path}
+        run_opts = {**opts, "prompt": prompt, "output": out_path, **preloaded}
         runner(run_opts)
 
 
