@@ -11,7 +11,7 @@
 #   mini_gemini  → Mini-Gemini (VLM, TEXT output)(CUHK)
 
 # ── Active model ────────────────────────────────────────────────────
-model_name: "sd3"
+model_name: "sd3_onlb"
 model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"
 
 # ── Swap examples (uncomment one block at a time) ────────────────────
@@ -52,16 +52,20 @@ model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"
 
 # ── Device & seed ────────────────────────────────────────────────────
 device: "cuda"   # cuda | cpu | mps
-seed:   42
+seed:   43
 
 # ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
 prompts:
   - "a photo of an astronaut riding a horse on mars"
+  - "a futuristic city at night, neon lights, cinematic"
+  - "a red apple on a white marble table, studio lighting"
+  - "an old wooden cabin in a snowy forest at dawn"
+  - "a golden retriever running on a beach at sunset"
 
 negative_prompt: "blurry, low quality, ugly, deformed"
 
 # ── Output path ──────────────────────────────────────────────────────
-output: "stochastic_output.png"
+output: "output1.png"
 
 # ── Image generation ─────────────────────────────────────────────────
 generation:
@@ -100,12 +104,19 @@ model_kwargs: {}
 # ── Trajectory saving (run_experiment.py only) ───────────────────────
 save_trajectory: false
 
-# ── Stochastic Velocity Sampler ──────────────────────────────────────
-# Set enabled: true to replace the standard diffusers pipeline with the
-# stochastic branching sampler defined in stochastic_sampler.py.
-stochastic_sampler:
-  enabled:   true   # true | false
-  K:         6       # number of velocity branches per step
-  sigma_max: 0.15    # peak noise magnitude at step 0
-  lam:       1.5     # λ — entropy reward weight
-  alpha:     0.5    # α — Gibbs temperature
+# ── Orthogonal Null-Space Langevin Backtracking (ONLB) ───────────────
+# Used when model_name is "sd3_onlb".
+# lam  : repulsion weight λ  — how hard to push away from clean track
+#         higher → more diverse but less coherent  (recommended: 0.1 – 1.0)
+# eta  : Langevin temperature η — thermal exploration chaos
+#         higher → wider stochastic search          (recommended: 0.01 – 0.3)
+# save_original: also write the original (non-diverse) image for comparison
+onlb:
+  lam:           1.0    # start here — increase slowly (0.05 → 0.1 → 0.2)
+  eta:           0.01    # start here — increase slowly (0.01 → 0.05 → 0.1)
+  max_drift:     3.0     # clamp escape per step in units of √D — keeps x̃_0 sane
+  save_original: true
+
+# ── ONLB swap example ────────────────────────────────────────────────
+# model_name: "sd3_onlb"
+# model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"

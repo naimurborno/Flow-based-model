@@ -21,6 +21,13 @@ import numpy as np
 import torch
 import yaml
 
+# ONLB import — graceful fallback if file not yet on path
+try:
+    from onlb_sampler import run_sd3_onlb as _run_sd3_onlb
+    _ONLB_AVAILABLE = True
+except ImportError:
+    _ONLB_AVAILABLE = False
+
 
 # ══════════════════════════════════════════════════════════════════════ #
 #  Registry: model_name → loader function                                #
@@ -76,7 +83,6 @@ def resolve_args(args, cfg: dict) -> dict:
         "device":          device,
         # model-specific extras (pass through wholesale)
         "model_kwargs":    cfg.get("model_kwargs", {}),
-        "_cfg": cfg        
     }
 
 
@@ -171,65 +177,40 @@ def run_sd(opts: dict):
 
 
 # ─── Stable Diffusion 3 ───────────────────────────────────────────────
-# @register_model("sd3")
-# def run_sd3(opts: dict):
-#     """
-#     Stable Diffusion 3 (Flow Matching + MMDiT)
-#     Recommended model_id: "stabilityai/stable-diffusion-3-medium-diffusers"
-#                        or "stabilityai/stable-diffusion-3.5-large"
-#     """
-#     from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
-
-#     print(f"[SD3] Loading {opts['model_id']}...")
-#     pipe = StableDiffusion3Pipeline.from_pretrained(
-#         opts["model_id"],
-#         torch_dtype    = torch.float16,
-#         text_encoder_3 = None,   # skip T5 to save VRAM
-#         tokenizer_3    = None,
-#         **opts["model_kwargs"],
-#     ).to(opts["device"])
-
-#     # Swap to explicit flow scheduler
-#     pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config)
-
-#     generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
-
-#     print("[SD3] Generating...")
-#     result = pipe(
-#         prompt              = opts["prompt"],
-#         negative_prompt     = opts["negative_prompt"],
-#         height              = opts["height"],
-#         width               = opts["width"],
-#         num_inference_steps = opts["num_steps"],
-#         guidance_scale      = opts["guidance_scale"],
-#         generator           = generator,
-#     )
-#     save_image(result.images[0], opts["output"])
 @register_model("sd3")
 def run_sd3(opts: dict):
     """
     Stable Diffusion 3 (Flow Matching + MMDiT)
     Recommended model_id: "stabilityai/stable-diffusion-3-medium-diffusers"
                        or "stabilityai/stable-diffusion-3.5-large"
- 
-    Routing:
-      stochastic_sampler.enabled: true  → SD3PipelineWrapper → StochasticVelocitySampler
-      stochastic_sampler.enabled: false → SD3PipelineWrapper → standard diffusers pipe()
     """
-    from pipeline_wrapper import SD3PipelineWrapper
- 
-    cfg = opts["_cfg"]   # full config dict passed through from main()
- 
-    wrapper = SD3PipelineWrapper(cfg=cfg, device=opts["device"])
-    wrapper.load()
- 
+    from diffusers import StableDiffusion3Pipeline, FlowMatchEulerDiscreteScheduler
+
+    print(f"[SD3] Loading {opts['model_id']}...")
+    pipe = StableDiffusion3Pipeline.from_pretrained(
+        opts["model_id"],
+        torch_dtype    = torch.float16,
+        text_encoder_3 = None,   # skip T5 to save VRAM
+        tokenizer_3    = None,
+        **opts["model_kwargs"],
+    ).to(opts["device"])
+
+    # Swap to explicit flow scheduler
+    pipe.scheduler = FlowMatchEulerDiscreteScheduler.from_config(pipe.scheduler.config)
+
+    generator = torch.Generator(device=opts["device"]).manual_seed(opts["seed"])
+
     print("[SD3] Generating...")
-    image = wrapper.generate(
-        prompt          = opts["prompt"],
-        negative_prompt = opts["negative_prompt"],
-        seed            = opts["seed"],
+    result = pipe(
+        prompt              = opts["prompt"],
+        negative_prompt     = opts["negative_prompt"],
+        height              = opts["height"],
+        width               = opts["width"],
+        num_inference_steps = opts["num_steps"],
+        guidance_scale      = opts["guidance_scale"],
+        generator           = generator,
     )
-    save_image(image, opts["output"])
+    save_image(result.images[0], opts["output"])
 
 
 # ─── SANA ─────────────────────────────────────────────────────────────
@@ -500,7 +481,14 @@ def main():
     cfg  = load_config(args.config)
     opts = resolve_args(args, cfg)
 
+    # make the raw cfg available to runners that need it (e.g. ONLB)
+    opts["_cfg"] = cfg
+
     set_seed(opts["seed"])
+
+    # Register ONLB runner if available
+    if _ONLB_AVAILABLE:
+        MODEL_REGISTRY["sd3_onlb"] = _run_sd3_onlb
 
     print(f"[INFO] Model    : {opts['model_name']} ({opts['model_id']})")
     print(f"[INFO] Prompt   : {opts['prompt']}")

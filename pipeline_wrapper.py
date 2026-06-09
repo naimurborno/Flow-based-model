@@ -168,14 +168,31 @@ class SD3PipelineWrapper:
 
     def decode_latents(self, latents: torch.Tensor) -> Image.Image:
         # SD3 VAE decode convention:
-        #   latents_in = (latents - shift_factor) / scaling_factor
-        # shift_factor re-centers, scaling_factor normalizes variance.
-        scaling_factor = self.vae.config.scaling_factor
+        #   VAE expects: latents / scaling_factor + shift_factor
+        # (encoder does the inverse: (x - shift) * scale)
+        scaling_factor = self.vae.config.scaling_factor          # ~1.5305
         shift_factor   = getattr(self.vae.config, 'shift_factor', 0.0609)
-        latents = latents.to(dtype=torch.float16)
-        latents = (latents - shift_factor) / scaling_factor
+
+        # guard: abort early if latents are already NaN/Inf
+        if not torch.isfinite(latents).all():
+            print("[Pipeline] WARNING: latents contain NaN/Inf before decode — "
+                  "returning blank image")
+            from PIL import Image as PILImage
+            gen_cfg = self.cfg.get("generation", {})
+            return PILImage.fromarray(
+                __import__("numpy").zeros(
+                    (gen_cfg.get("height", 512), gen_cfg.get("width", 512), 3),
+                    dtype="uint8"
+                )
+            )
+
+        latents = latents.to(dtype=torch.float32)               # fp32 for stable decode
+        latents = latents / scaling_factor + shift_factor        # correct unscaling
+        latents = latents.to(dtype=torch.float16)               # back to fp16 for VAE
+
         with torch.no_grad():
             image = self.vae.decode(latents).sample
+
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         image = (image[0] * 255).round().astype("uint8")
