@@ -57,15 +57,11 @@ seed:   43
 # ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
 prompts:
   - "a photo of an astronaut riding a horse on mars"
-  - "a futuristic city at night, neon lights, cinematic"
-  - "a red apple on a white marble table, studio lighting"
-  - "an old wooden cabin in a snowy forest at dawn"
-  - "a golden retriever running on a beach at sunset"
 
 negative_prompt: "blurry, low quality, ugly, deformed"
 
 # ── Output path ──────────────────────────────────────────────────────
-output: "output1.png"
+output: "output12.png"
 
 # ── Image generation ─────────────────────────────────────────────────
 generation:
@@ -112,9 +108,12 @@ save_trajectory: false
 #         higher → wider stochastic search          (recommended: 0.01 – 0.3)
 # save_original: also write the original (non-diverse) image for comparison
 onlb:
-  lam:           1.0    # start here — increase slowly (0.05 → 0.1 → 0.2)
-  eta:           0.01    # start here — increase slowly (0.01 → 0.05 → 0.1)
-  max_drift:     3.0     # clamp escape per step in units of √D — keeps x̃_0 sane
+  lam:           0.1    # start here — increase slowly (0.05 → 0.1 → 0.2)
+  eta:           0.07    # start here — increase slowly (0.01 → 0.05 → 0.1)
+  max_drift:     8.0     # clamp escape per step in units of √D — keeps x̃_0 sane
+  alpha:         0.3
+  interp:        0.3 
+  target_cos:   -0.5 
   save_original: true
 
 # ── ONLB swap example ────────────────────────────────────────────────
