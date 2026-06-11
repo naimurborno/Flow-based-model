@@ -37,6 +37,7 @@ class ONLBSampler:
         lam          : float = 0.05,   # soft repulsion weight (orthogonal escape)
         eta          : float = 0.01,   # Langevin temperature
         alpha        : float = 0.1,    # hard repulsion weight (score-based basin escape)
+        mu           : float = 0.3,    # CFG directional push weight
         max_drift    : float = 3.0,    # hard clamp: max ‖x̃ − x_anchor‖ / √D per step
         eps          : float = 1e-8,
     ):
@@ -47,6 +48,7 @@ class ONLBSampler:
         self.lam       = lam
         self.eta       = eta
         self.alpha     = alpha
+        self.mu        = mu
         self.max_drift = max_drift
         self.eps       = eps
 
@@ -54,7 +56,7 @@ class ONLBSampler:
         self.num_steps      = f_cfg.get("num_steps",      20)
         self.guidance_scale = f_cfg.get("guidance_scale", 7.5)
         self.do_cfg         = self.guidance_scale > 1.0
-        print(f"[ONLB] λ={self.lam}  η={self.eta}  α={self.alpha}  "
+        print(f"[ONLB] λ={self.lam}  η={self.eta}  α={self.alpha}  μ={self.mu}  "
               f"max_drift={self.max_drift}")
 
     # ================================================================== #
@@ -72,7 +74,7 @@ class ONLBSampler:
 
         # Phase 1
         print("\n[ONLB] ── Phase 1: Forward pass & trajectory caching ──")
-        cached_x, cached_v, cached_dt, cached_sigma, x_N = self._forward_pass(
+        cached_x, cached_v, cached_v_uncond, cached_v_cond, cached_dt, cached_sigma, x_N = self._forward_pass(
             latents, text_embeddings, pooled_embeddings, tag="Cache"
         )
 
@@ -82,7 +84,9 @@ class ONLBSampler:
 
         # Phase 2
         print("\n[ONLB] ── Phase 2: Orthogonal Langevin backward pass ──")
-        x0_tilde = self._backward_pass(cached_x, cached_v, cached_dt, cached_sigma)
+        x0_tilde = self._backward_pass(
+            cached_x, cached_v, cached_v_uncond, cached_v_cond, cached_dt, cached_sigma
+        )
         # in run(), after Phase 2, before Phase 3:
         cos_pre = torch.nn.functional.cosine_similarity(
             x0_tilde.reshape(1,-1).float(),
@@ -104,7 +108,7 @@ class ONLBSampler:
 
         # Phase 4
         print("\n[ONLB] ── Phase 4: Forward decode from diverse seed ──")
-        _, _, _, _, x_N_diverse = self._forward_pass(
+        _, _, _, _, _, _, x_N_diverse = self._forward_pass(
             x0_diverse, text_embeddings, pooled_embeddings, tag="Decode"
         )
         print(f"[ONLB] x_N norm={x_N.norm():.4f}")
@@ -153,10 +157,12 @@ class ONLBSampler:
         timesteps = self.scheduler.timesteps   # e.g. [999, 966, ..., 0]
         N         = len(timesteps)
 
-        cached_x     = [None] * (N + 1)
-        cached_v     = [None] * N
-        cached_dt    = [None] * N
-        cached_sigma = [None] * N
+        cached_x       = [None] * (N + 1)
+        cached_v       = [None] * N
+        cached_v_uncond = [None] * N   # ← split: unconditional velocity
+        cached_v_cond   = [None] * N   # ← split: conditional velocity
+        cached_dt      = [None] * N
+        cached_sigma   = [None] * N
 
         x           = x0.clone()
         cached_x[0] = x.float().clone()
@@ -164,9 +170,12 @@ class ONLBSampler:
         for k, t in enumerate(timesteps):
             t_val = t.item() if hasattr(t, "item") else float(t)
 
-            v = self._velocity_forward(x, t, text_embeddings, pooled_embeddings)
-            # print(f"  v norm={v.norm():.1f}  finite={torch.isfinite(v).all()}")
-            cached_v[k] = v.detach().float().clone()
+            v, v_uncond, v_cond = self._velocity_forward(
+                x, t, text_embeddings, pooled_embeddings, return_split=True
+            )
+            cached_v[k]        = v.detach().float().clone()
+            cached_v_uncond[k] = v_uncond.detach().float().clone()
+            cached_v_cond[k]   = v_cond.detach().float().clone()
 
             # ── actual dt and sigma from scheduler ─────────────────── #
             if hasattr(self.scheduler, "sigmas"):
@@ -188,7 +197,7 @@ class ONLBSampler:
                       f"σ={sigma_t:.4f} | dt={dt:.4f} | "
                       f"mean={x.mean():.4f} | std={x.std():.4f}")
 
-        return cached_x, cached_v, cached_dt, cached_sigma, x
+        return cached_x, cached_v, cached_v_uncond, cached_v_cond, cached_dt, cached_sigma, x
 
     # ================================================================== #
     #  PHASE 2 — ORTHOGONAL LANGEVIN BACKWARD PASS                       #
@@ -196,10 +205,12 @@ class ONLBSampler:
 
     def _backward_pass(
         self,
-        cached_x     : list,
-        cached_v     : list,
-        cached_dt    : list,
-        cached_sigma : list,
+        cached_x       : list,
+        cached_v       : list,
+        cached_v_uncond: list,
+        cached_v_cond  : list,
+        cached_dt      : list,
+        cached_sigma   : list,
     ) -> torch.Tensor:
         """
         Score-informed orthogonal Langevin backward walk: x_N → x̃_0.
@@ -211,11 +222,15 @@ class ONLBSampler:
                  + Δt·v_k⊥                      (soft repulsion: orthogonal escape)
                  + (α·Δt/σ_k)·v_k               (hard repulsion: score-based basin escape)
                  + √(2η·Δt)·ξ⊥                  (orthogonal Langevin noise)
+                 + μ·(dₖ/‖dₖ‖)·‖vₖ‖             (CFG directional push)
+
+        where dₖ = v_uncond_k − v_cond_k  (points from cond basin → uncond basin)
 
         Key properties:
           - v_k⊥ ⊥ v_k  (Gram-Schmidt) → soft escape never fights the flow
           - ξ⊥   ⊥ v_k  (Gram-Schmidt) → noise never corrupts the flow direction
           - hard repulsion ∝ 1/σ_k → grows strongest near x_0 where it matters most
+          - CFG push is constant strength (normalized dₖ), proportional to |vₖ|
           - all math in fp32 to prevent fp16 NaN/Inf accumulation
         """
         N          = len(cached_v)
@@ -258,7 +273,17 @@ class ONLBSampler:
             # ── orthogonal Langevin noise ─────────────────────────────── #
             # project onto null-space of v_k so noise cannot corrupt flow direction
             xi          = torch.randn_like(x_tilde) 
-            noise_scale = self.eta * v_fwd_norm.item()
+            noise_scale = (2 * self.eta * dt) ** 0.5 * v_fwd_norm.item()
+
+            # ── CFG directional push ─────────────────────────────────── #
+            # dₖ = v_uncond − v_cond  →  points away from cond basin toward uncond
+            # Normalized direction × ‖vₖ‖ × μ gives constant-strength escape
+            # that doesn't decay with distance (unlike absolute position pull)
+            v_u = cached_v_uncond[k]
+            v_c = cached_v_cond[k]
+            d_k      = v_u - v_c
+            d_k_norm = d_k.norm() + self.eps
+            cfg_push = self.mu * (d_k / d_k_norm) * v_fwd_norm.item()
 
             # ── full update ──────────────────────────────────────────── #
             x_tilde = (
@@ -266,8 +291,13 @@ class ONLBSampler:
                 # - dt * v_forward              # attraction
                 + dt * v_ortho                # soft repulsion (orthogonal)
                 + score_repulsion             # hard repulsion (score-based)
-                + noise_scale * xi       # orthogonal noise
+                + noise_scale * xi            # Langevin noise
+                + cfg_push                    # CFG directional push
             )
+            # target_norm = cached_x[k].norm()
+            # current_norm = x_tilde.norm() + self.eps
+            # if current_norm > 2.0 * target_norm:
+            #     x_tilde = x_tilde * (target_norm / current_norm)
 
             # NaN guard: clamp to preserve escape progress
             if not torch.isfinite(x_tilde).all():
@@ -278,6 +308,7 @@ class ONLBSampler:
                 print(f"  [Backward] step {N-k:>3}/{N} | k={k} | σ={sigma_k:.4f} | "
                       f"|δ|={delta.norm():.2f} | |v⊥|={v_ortho.norm():.2f} | "
                       f"|score|={score_repulsion.norm():.2f} | "
+                      f"|cfg_push|={cfg_push.norm():.2f} | "
                       f"noise={noise_scale:.4f} | "
                       f"mean={x_tilde.mean():.4f} | std={x_tilde.std():.4f}")
 
@@ -326,9 +357,10 @@ class ONLBSampler:
         t                 : torch.Tensor,
         text_embeddings   : torch.Tensor,
         pooled_embeddings : Optional[torch.Tensor],
-    ) -> torch.Tensor:
+        return_split      : bool = False,
+    ):
         """
-        v_θ(x, t) with CFG.  Mirrors _velocity_forward in custom_flow_loop.py.
+        v_θ(x, t) with CFG.  When return_split=True, also returns v_uncond and v_cond.
         """
         device = next(self.unet.parameters()).device
         dtype  = next(self.unet.parameters()).dtype
@@ -355,8 +387,13 @@ class ONLBSampler:
 
         if self.do_cfg:
             v_uncond, v_cond = output.chunk(2)
-            output = v_uncond + self.guidance_scale * (v_cond - v_uncond)
+            v_cfg = v_uncond + self.guidance_scale * (v_cond - v_uncond)
+            if return_split:
+                return v_cfg, v_uncond, v_cond
+            return v_cfg
 
+        if return_split:
+            return output, output, output   # no CFG: uncond == cond == output
         return output
 
 
@@ -387,10 +424,11 @@ def run_sd3_onlb(opts: dict):
     lam           = onlb_cfg.get("lam",           0.05)
     eta           = onlb_cfg.get("eta",           0.01)
     alpha         = onlb_cfg.get("alpha",         0.1)
+    mu            = onlb_cfg.get("mu",            0.3)
     max_drift     = onlb_cfg.get("max_drift",     3.0)
     save_original = onlb_cfg.get("save_original", True)
 
-    print(f"\n[ONLB] λ={lam}  η={eta}  α={alpha}  max_drift={max_drift}  steps={opts['num_steps']}")
+    print(f"\n[ONLB] λ={lam}  η={eta}  α={alpha}  μ={mu}  max_drift={max_drift}  steps={opts['num_steps']}")
 
     sampler = ONLBSampler(
         unet      = wrapper.transformer,
@@ -400,6 +438,7 @@ def run_sd3_onlb(opts: dict):
         lam       = lam,
         eta       = eta,
         alpha     = alpha,
+        mu        = mu,
         max_drift = max_drift,
     )
 
