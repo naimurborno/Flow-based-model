@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "82398acf59567c65",
+        "id": "4341012528b995ad",
         "type": "tabs",
         "children": [
           {
-            "id": "5bdfe8d33cf97f93",
+            "id": "8b148086e14f60ef",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Notes/Hyperparameter testing.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "Hyperparameter testing"
+              "title": "New tab"
             }
           }
         ]
@@ -94,7 +90,6 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Notes/Hyperparameter testing.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +99,7 @@
                 "unlinkedCollapsed": false
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for Hyperparameter testing"
+              "title": "Backlinks"
             }
           },
           {
@@ -183,22 +178,23 @@
       "bases:Create new base": false
     }
   },
-  "active": "5bdfe8d33cf97f93",
+  "active": "8b148086e14f60ef",
   "lastOpenFiles": [
+    "Notes.md",
+    "Pasted image 20260612150222.png",
+    "Pasted image 20260612150212.png",
+    "Pasted image 20260612150204.png",
+    "Pasted image 20260612150149.png",
+    "Pasted image 20260612150142.png",
+    "Pasted image 20260612145828.png",
+    "Pasted image 20260612145813.png",
+    "Pasted image 20260612145802.png",
+    "Pasted image 20260612145754.png",
+    "Pasted image 20260612145747.png",
+    "Notes/Hyperparameter testing.md",
     "Notes/README.md",
     "README.md",
-    "Notes/Hyperparameter testing.md",
-    "Notes/images/Pasted image 20260611154441.png",
-    "Notes/images/Pasted image 20260611154848.png",
     "Notes/images",
-    "Notes/images/Pasted image 20260611171558.png",
-    "Notes/images/Pasted image 20260611171547.png",
-    "Notes/images/Pasted image 20260611164024.png",
-    "Notes/images/Pasted image 20260611163841.png",
-    "Notes/images/Pasted image 20260611162649.png",
-    "Notes/images/Pasted image 20260611160551.png",
-    "Notes/images/Pasted image 20260611160156.png",
-    "Notes/images/Pasted image 20260611155940.png",
     "Notes"
   ]
 }

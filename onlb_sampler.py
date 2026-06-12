@@ -20,9 +20,15 @@ Backward update at step k:
   so neither term can corrupt the flow direction.
 
 Total model calls: 2N.
+
+Multi-seed entry point (run_sd3_onlb):
+  - Model is loaded ONCE before the seed loop.
+  - Each seed runs the full ONLB pipeline independently.
+  - Per-seed and average cosine similarities are reported at the end.
 """
 
 import torch
+from pathlib import Path
 from typing import Dict, Any, Optional
 
 
@@ -68,6 +74,7 @@ class ONLBSampler:
         latents           : torch.Tensor,
         text_embeddings   : torch.Tensor,
         pooled_embeddings : Optional[torch.Tensor] = None,
+        seed:int=0
     ) -> Dict[str, Any]:
 
         x0_original = latents.clone()
@@ -85,14 +92,14 @@ class ONLBSampler:
         # Phase 2
         print("\n[ONLB] ── Phase 2: Orthogonal Langevin backward pass ──")
         x0_tilde = self._backward_pass(
-            cached_x, cached_v, cached_v_uncond, cached_v_cond, cached_dt, cached_sigma
+            cached_x, cached_v, cached_v_uncond, cached_v_cond, cached_dt, cached_sigma, seed
         )
-        # in run(), after Phase 2, before Phase 3:
         cos_pre = torch.nn.functional.cosine_similarity(
-            x0_tilde.reshape(1,-1).float(),
-            x0_original.reshape(1,-1).float()
+            x0_tilde.reshape(1, -1).float(),
+            x0_original.reshape(1, -1).float()
         ).item()
         print(f"[ONLB] cosine sim BEFORE Phase 3 = {cos_pre:.4f}")
+
         # Phase 3
         print("\n[ONLB] ── Phase 3: Norm-preserving direction projection ──")
         x0_diverse = self._project_to_shell(x0_tilde, x0_original)
@@ -114,8 +121,8 @@ class ONLBSampler:
         print(f"[ONLB] x_N norm={x_N.norm():.4f}")
         print(f"[ONLB] x_N_diverse norm={x_N_diverse.norm():.4f}")
         cos_post4 = torch.nn.functional.cosine_similarity(
-            x_N_diverse.reshape(1,-1).float(),
-            x_N.reshape(1,-1).float()
+            x_N_diverse.reshape(1, -1).float(),
+            x_N.reshape(1, -1).float()
         ).item()
         print(f"[ONLB] cosine sim AFTER Phase 4 = {cos_post4:.4f}")
 
@@ -125,6 +132,10 @@ class ONLBSampler:
             "x0_original"      : x0_original,
             "x0_diverse"       : x0_diverse,
             "escape_distance"  : escape,
+            # cosine similarities for external aggregation
+            "cos_pre_phase3"   : cos_pre,
+            "cos_x0"           : cos_sim,
+            "cos_post_phase4"  : cos_post4,
         }
 
     # ================================================================== #
@@ -157,12 +168,12 @@ class ONLBSampler:
         timesteps = self.scheduler.timesteps   # e.g. [999, 966, ..., 0]
         N         = len(timesteps)
 
-        cached_x       = [None] * (N + 1)
-        cached_v       = [None] * N
-        cached_v_uncond = [None] * N   # ← split: unconditional velocity
-        cached_v_cond   = [None] * N   # ← split: conditional velocity
-        cached_dt      = [None] * N
-        cached_sigma   = [None] * N
+        cached_x        = [None] * (N + 1)
+        cached_v        = [None] * N
+        cached_v_uncond = [None] * N
+        cached_v_cond   = [None] * N
+        cached_dt       = [None] * N
+        cached_sigma    = [None] * N
 
         x           = x0.clone()
         cached_x[0] = x.float().clone()
@@ -211,6 +222,7 @@ class ONLBSampler:
         cached_v_cond  : list,
         cached_dt      : list,
         cached_sigma   : list,
+        seed:int=0
     ) -> torch.Tensor:
         """
         Score-informed orthogonal Langevin backward walk: x_N → x̃_0.
@@ -225,22 +237,15 @@ class ONLBSampler:
                  + μ·(dₖ/‖dₖ‖)·‖vₖ‖             (CFG directional push)
 
         where dₖ = v_uncond_k − v_cond_k  (points from cond basin → uncond basin)
-
-        Key properties:
-          - v_k⊥ ⊥ v_k  (Gram-Schmidt) → soft escape never fights the flow
-          - ξ⊥   ⊥ v_k  (Gram-Schmidt) → noise never corrupts the flow direction
-          - hard repulsion ∝ 1/σ_k → grows strongest near x_0 where it matters most
-          - CFG push is constant strength (normalized dₖ), proportional to |vₖ|
-          - all math in fp32 to prevent fp16 NaN/Inf accumulation
         """
         N          = len(cached_v)
         orig_dtype = cached_x[N].dtype
         x_tilde    = cached_x[N].clone().float()
         D          = x_tilde.numel()
-
+        step=0
         for k in range(N - 1, -1, -1):
             dt        = cached_dt[k]
-            sigma_k   = cached_sigma[k]           # σ at step k, guarded ≥ 1e-4
+            sigma_k   = cached_sigma[k]
             x_anchor  = cached_x[k].float()
             v_forward = cached_v[k].float()
 
@@ -262,25 +267,22 @@ class ONLBSampler:
             v_ortho = v_ortho * (v_fwd_norm / (v_ortho.norm() + self.eps))
 
             # ── hard repulsion: score-based basin escape ─────────────── #
-            # score ≈ -v_k/σ_k  →  +α·Δt/σ_k·v_k moves away from current basin
-            # grows naturally as σ_k → 0, strongest near x_0
-            sigma_k     = max(sigma_k, 0.1)           # never let 1/σ exceed 10
+            sigma_k     = max(sigma_k, 0.1)
             if sigma_k > 0.3:
                 score_repulsion = (self.alpha * dt / sigma_k) * v_forward
             else:
                 score_repulsion = torch.zeros_like(v_forward)
 
             # ── orthogonal Langevin noise ─────────────────────────────── #
-            # project onto null-space of v_k so noise cannot corrupt flow direction
-            xi          = torch.randn_like(x_tilde) 
+            rng = torch.Generator(device=x_tilde.device)
+            rng.manual_seed(seed * 10000 + step)   # unique per (seed, step)
+            xi  = torch.randn(x_tilde.shape, generator=rng,
+                              dtype=x_tilde.dtype, device=x_tilde.device)
             noise_scale = (2 * self.eta * dt) ** 0.5 * v_fwd_norm.item()
 
             # ── CFG directional push ─────────────────────────────────── #
-            # dₖ = v_uncond − v_cond  →  points away from cond basin toward uncond
-            # Normalized direction × ‖vₖ‖ × μ gives constant-strength escape
-            # that doesn't decay with distance (unlike absolute position pull)
-            v_u = cached_v_uncond[k]
-            v_c = cached_v_cond[k]
+            v_u      = cached_v_uncond[k]
+            v_c      = cached_v_cond[k]
             d_k      = v_u - v_c
             d_k_norm = d_k.norm() + self.eps
             cfg_push = self.mu * (d_k / d_k_norm) * v_fwd_norm.item()
@@ -288,18 +290,12 @@ class ONLBSampler:
             # ── full update ──────────────────────────────────────────── #
             x_tilde = (
                 x_tilde
-                # - dt * v_forward              # attraction
-                # + dt * v_ortho                # soft repulsion (orthogonal)
-                + score_repulsion             # hard repulsion (score-based)
-                + noise_scale * xi            # Langevin noise
-                + cfg_push                    # CFG directional push
+                + score_repulsion
+                + noise_scale * xi
+                + cfg_push
             )
-            # target_norm = cached_x[k].norm()
-            # current_norm = x_tilde.norm() + self.eps
-            # if current_norm > 2.0 * target_norm:
-            #     x_tilde = x_tilde * (target_norm / current_norm)
 
-            # NaN guard: clamp to preserve escape progress
+            # NaN guard
             if not torch.isfinite(x_tilde).all():
                 print(f"  [Backward] WARNING: NaN/Inf at k={k}, clamping")
                 x_tilde = x_tilde.nan_to_num(nan=0.0, posinf=1e4, neginf=-1e4)
@@ -311,7 +307,7 @@ class ONLBSampler:
                       f"|cfg_push|={cfg_push.norm():.2f} | "
                       f"noise={noise_scale:.4f} | "
                       f"mean={x_tilde.mean():.4f} | std={x_tilde.std():.4f}")
-
+            step+=1
         return x_tilde.to(orig_dtype)
 
     # ================================================================== #
@@ -327,20 +323,19 @@ class ONLBSampler:
 
         # compute cosine sim
         cos_sim = torch.nn.functional.cosine_similarity(
-            x_normalized.reshape(1,-1), x0_orig_f.reshape(1,-1)
+            x_normalized.reshape(1, -1), x0_orig_f.reshape(1, -1)
         ).item()
 
         # if not already in negative similarity territory, push further
         target_cos = self.cfg.get("onlb", {}).get("target_cos", -0.3)
         if cos_sim > target_cos:
-            # reflect x through the orthogonal plane of x0
-            x0_unit  = x0_orig_f / orig_norm
-            parallel = (x_normalized.reshape(-1).dot(x0_unit.reshape(-1))) * x0_unit
-            x_reflected = x_normalized - 2 * parallel   # mirror across orthogonal plane
+            x0_unit     = x0_orig_f / orig_norm
+            parallel    = (x_normalized.reshape(-1).dot(x0_unit.reshape(-1))) * x0_unit
+            x_reflected = x_normalized - 2 * parallel
             x_normalized = x_reflected * (orig_norm / (x_reflected.norm() + self.eps))
 
         cos_final = torch.nn.functional.cosine_similarity(
-            x_normalized.reshape(1,-1), x0_orig_f.reshape(1,-1)
+            x_normalized.reshape(1, -1), x0_orig_f.reshape(1, -1)
         ).item()
         print(f"[ONLB]   cos before reflection={cos_sim:.4f} → after={cos_final:.4f}")
         print(f"[ONLB]   ‖x̃_0 − x_0‖ = {(x_normalized - x0_orig_f).norm().item():.4f}")
@@ -393,33 +388,54 @@ class ONLBSampler:
             return v_cfg
 
         if return_split:
-            return output, output, output   # no CFG: uncond == cond == output
+            return output, output, output
         return output
 
 
 # ══════════════════════════════════════════════════════════════════════ #
-#  DROP-IN RUNNER                                                         #
+#  DROP-IN RUNNER  (multi-seed, single model load)                        #
 # ══════════════════════════════════════════════════════════════════════ #
 
 def run_sd3_onlb(opts: dict):
     """
     Drop-in runner for inference.py MODEL_REGISTRY.
     Set model_name: "sd3_onlb" in config.yaml to activate.
+
+    Multi-seed behaviour
+    --------------------
+    - Reads `seeds` list from opts (populated by inference.py from config.yaml).
+    - The SD3 pipeline (transformer, VAE, text encoders) is loaded ONCE.
+    - Each seed generates one independent diverse image without reloading weights.
+    - Per-seed cosine similarities (pre-phase3, x0, post-phase4) are printed.
+    - Average cosine similarity across all seeds is reported in a final summary.
+
+    Output naming
+    -------------
+    Single seed  → uses opts["output"] as-is (original behaviour preserved).
+    Multi-seed   → stem gets "_seed{N}" appended, e.g. output11_seed41.png
     """
-    from pathlib import Path
     from pipeline_wrapper import SD3PipelineWrapper
 
     cfg    = opts.get("_cfg", {})
     device = opts["device"]
 
+    # ── resolve seeds ──────────────────────────────────────────────── #
+    seeds = opts.get("seeds") or [opts["seed"]]
+
+    # ── LOAD MODEL ONCE ────────────────────────────────────────────── #
+    print("\n" + "═" * 60)
+    print("[ONLB] Loading model (once for all seeds)…")
+    print("═" * 60)
     wrapper = SD3PipelineWrapper(cfg, device=device)
     wrapper.load()
 
+    # ── encode prompt once (shared across all seeds) ────────────────── #
+    print("\n[ONLB] Encoding prompt (shared across all seeds)…")
     prompt_embeds, pooled_embeds = wrapper.encode_prompt(
         opts["prompt"], opts["negative_prompt"]
     )
-    latents = wrapper.get_initial_latents(seed=opts["seed"])
 
+    # ── ONLB hyper-parameters ────────────────────────────────────────── #
     onlb_cfg      = cfg.get("onlb", {})
     lam           = onlb_cfg.get("lam",           0.05)
     eta           = onlb_cfg.get("eta",           0.01)
@@ -428,8 +444,7 @@ def run_sd3_onlb(opts: dict):
     max_drift     = onlb_cfg.get("max_drift",     3.0)
     save_original = onlb_cfg.get("save_original", True)
 
-    print(f"\n[ONLB] λ={lam}  η={eta}  α={alpha}  μ={mu}  max_drift={max_drift}  steps={opts['num_steps']}")
-
+    # sampler is stateless between runs — create once, reuse
     sampler = ONLBSampler(
         unet      = wrapper.transformer,
         scheduler = wrapper.scheduler,
@@ -442,18 +457,105 @@ def run_sd3_onlb(opts: dict):
         max_drift = max_drift,
     )
 
-    result = sampler.run(latents, prompt_embeds, pooled_embeds)
+    # ── output path helper ────────────────────────────────────────────── #
+    base_out = Path(opts["output"])
+    multi_seed = len(seeds) > 1
 
-    # save diverse
-    out_path = Path(opts["output"])
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    wrapper.decode_latents(result["diverse_latents"]).save(out_path)
-    print(f"\n[ONLB] Diverse image  → {out_path}")
+    def _out_path(seed: int) -> Path:
+        if multi_seed:
+            return base_out.with_stem(base_out.stem + f"_seed{seed}")
+        return base_out
 
-    # save original for side-by-side comparison
-    if save_original:
-        orig_path = out_path.with_stem(out_path.stem + "_original")
-        wrapper.decode_latents(result["original_latents"]).save(orig_path)
-        print(f"[ONLB] Original image → {orig_path}")
+    # ── tracking ──────────────────────────────────────────────────────── #
+    # cos_x0        : cosine sim between x0_diverse and x0_original (Phase 3 output)
+    # cos_post4     : cosine sim between x_N_diverse and x_N (Phase 4 output)
+    records = []   # list of dicts, one per seed
 
-    print(f"[ONLB] Escape distance = {result['escape_distance']:.4f}")
+    # ══════════════════════════════════════════════════════════════════ #
+    #  SEED LOOP                                                         #
+    # ══════════════════════════════════════════════════════════════════ #
+    for idx, seed in enumerate(seeds):
+        print("\n" + "═" * 60)
+        print(f"[ONLB] Seed {seed}  ({idx + 1}/{len(seeds)})")
+        print(f"[ONLB] λ={lam}  η={eta}  α={alpha}  μ={mu}  "
+              f"max_drift={max_drift}  steps={opts['num_steps']}")
+        print("═" * 60)
+
+        # fresh initial noise for this seed
+        latents = wrapper.get_initial_latents(seed=seed)
+
+        result = sampler.run(latents, prompt_embeds, pooled_embeds)
+
+        # ── save diverse image ──────────────────────────────────────── #
+        out_path = _out_path(seed)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        wrapper.decode_latents(result["diverse_latents"]).save(out_path)
+        print(f"\n[ONLB] Diverse image  → {out_path}")
+
+        # ── optionally save original for side-by-side comparison ──── #
+        if save_original:
+            orig_path = out_path.with_stem(out_path.stem + "_original")
+            wrapper.decode_latents(result["original_latents"]).save(orig_path)
+            print(f"[ONLB] Original image → {orig_path}")
+
+        print(f"[ONLB] Escape distance = {result['escape_distance']:.4f}")
+
+        records.append({
+            "seed"         : seed,
+            "cos_pre_p3"   : result["cos_pre_phase3"],
+            "cos_x0"       : result["cos_x0"],
+            "cos_post_p4"  : result["cos_post_phase4"],
+            "escape"       : result["escape_distance"],
+            "out_path"     : str(out_path),
+        })
+
+    # ══════════════════════════════════════════════════════════════════ #
+    #  COSINE SIMILARITY SUMMARY                                         #
+    # ══════════════════════════════════════════════════════════════════ #
+    print("\n" + "═" * 60)
+    print(f"[ONLB] ── Cosine Similarity Summary ({len(seeds)} seed(s)) ──")
+    print("═" * 60)
+
+    header = f"{'Seed':>8} | {'cos(pre-P3)':>11} | {'cos(x0_div,x0)':>14} | {'cos(post-P4)':>12} | {'escape':>10} | Output"
+    print(header)
+    print("-" * len(header))
+
+    cos_pre_list   = []
+    cos_x0_list    = []
+    cos_post4_list = []
+
+    for r in records:
+        print(
+            f"{r['seed']:>8} | "
+            f"{r['cos_pre_p3']:>11.4f} | "
+            f"{r['cos_x0']:>14.4f} | "
+            f"{r['cos_post_p4']:>12.4f} | "
+            f"{r['escape']:>10.4f} | "
+            f"{r['out_path']}"
+        )
+        cos_pre_list.append(r["cos_pre_p3"])
+        cos_x0_list.append(r["cos_x0"])
+        cos_post4_list.append(r["cos_post_p4"])
+
+    if len(seeds) > 1:
+        avg_pre   = sum(cos_pre_list)   / len(cos_pre_list)
+        avg_x0    = sum(cos_x0_list)    / len(cos_x0_list)
+        avg_post4 = sum(cos_post4_list) / len(cos_post4_list)
+
+        print("-" * len(header))
+        print(
+            f"{'AVERAGE':>8} | "
+            f"{avg_pre:>11.4f} | "
+            f"{avg_x0:>14.4f} | "
+            f"{avg_post4:>12.4f} |"
+        )
+
+    print("═" * 60)
+    print(
+        "[ONLB] Column guide:\n"
+        "  cos(pre-P3)    — cosine sim of x̃₀ vs x₀  BEFORE Phase 3 projection\n"
+        "  cos(x0_div,x0) — cosine sim of x0_diverse vs x0_original (Phase 3 output)\n"
+        "  cos(post-P4)   — cosine sim of x_N_diverse vs x_N (final image latents)\n"
+        "  escape         — ‖x̃₀ − x₀‖₂  Euclidean escape distance"
+    )
+    print("═" * 60)

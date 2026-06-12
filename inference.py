@@ -10,7 +10,11 @@ Usage:
 
 Model is selected via config.yaml:
     model_name: "flux"          # flux | sd | sd3 | sana | lumina | janus | cogvideo | mini_gemini
-    model_id:   "black-forest-labs/FLUX.1-dev"
+
+Multi-seed (sd3_onlb only):
+    Add a `seeds` list to config.yaml.  The model is loaded once and each seed
+    generates one independent image.  Per-seed and average cosine similarities
+    are reported at the end.
 """
 
 import argparse
@@ -51,7 +55,7 @@ def parse_args():
     p.add_argument("--config",  type=str, default="config.yaml")
     p.add_argument("--prompt",  type=str, default=None, help="Overrides config prompt")
     p.add_argument("--output",  type=str, default=None, help="Overrides config output path")
-    p.add_argument("--seed",    type=int, default=None, help="Overrides config seed")
+    p.add_argument("--seed",    type=int, default=None, help="Overrides config seed (single seed)")
     p.add_argument("--device",  type=str, default=None, help="Overrides config device")
     return p.parse_args()
 
@@ -68,6 +72,16 @@ def load_config(path: str) -> dict:
 def resolve_args(args, cfg: dict) -> dict:
     """Merge CLI args on top of config. CLI always wins."""
     device = args.device or cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
+
+    # Single seed: CLI --seed > config `seed`
+    single_seed = args.seed or cfg.get("seed", 42)
+
+    # Multi-seed list: CLI --seed overrides the whole list to [seed]
+    if args.seed is not None:
+        seeds = [args.seed]
+    else:
+        seeds = cfg.get("seeds") or [single_seed]
+
     return {
         "model_name":      cfg.get("model_name", "sd3"),
         "model_id":        cfg.get("model_id", "stabilityai/stable-diffusion-3-medium-diffusers"),
@@ -79,7 +93,8 @@ def resolve_args(args, cfg: dict) -> dict:
         "num_steps":       cfg.get("flow", {}).get("num_steps", 50),
         "guidance_scale":  cfg.get("flow", {}).get("guidance_scale", 7.5),
         "solver":          cfg.get("flow", {}).get("solver", "euler"),
-        "seed":            args.seed or cfg.get("seed", 42),
+        "seed":            single_seed,   # kept for non-ONLB runners
+        "seeds":           seeds,         # used by sd3_onlb multi-seed loop
         "device":          device,
         # model-specific extras (pass through wholesale)
         "model_kwargs":    cfg.get("model_kwargs", {}),
@@ -490,13 +505,17 @@ def main():
     if _ONLB_AVAILABLE:
         MODEL_REGISTRY["sd3_onlb"] = _run_sd3_onlb
 
+    model_name = opts["model_name"].lower().strip()
+
     print(f"[INFO] Model    : {opts['model_name']} ({opts['model_id']})")
     print(f"[INFO] Prompt   : {opts['prompt']}")
     print(f"[INFO] Steps    : {opts['num_steps']} | cfg={opts['guidance_scale']} | solver={opts['solver']}")
     print(f"[INFO] Device   : {opts['device']}")
     print(f"[INFO] Output   : {opts['output']}")
 
-    model_name = opts["model_name"].lower().strip()
+    if model_name == "sd3_onlb":
+        seeds = opts["seeds"]
+        print(f"[INFO] Seeds    : {seeds}  ({len(seeds)} image(s) to generate)")
 
     if model_name not in MODEL_REGISTRY:
         supported = ", ".join(sorted(MODEL_REGISTRY.keys()))
