@@ -1,0 +1,204 @@
+{
+  "main": {
+    "id": "0b5cb10fba7a70b3",
+    "type": "split",
+    "children": [
+      {
+        "id": "82398acf59567c65",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5bdfe8d33cf97f93",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Notes/Hyperparameter testing.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Hyperparameter testing"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "71ac9cc07c1301b9",
+    "type": "split",
+    "children": [
+      {
+        "id": "7cd4d9dec52a9fb6",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "efd26a91f7461d77",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "049eacba09a1b17f",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "6b9a98c073662edc",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "c352b17e2a3a9bfc",
+    "type": "split",
+    "children": [
+      {
+        "id": "311bca5f06ba50d3",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "513a1d27da491e53",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Notes/Hyperparameter testing.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": false
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Hyperparameter testing"
+            }
+          },
+          {
+            "id": "c10f76ce5f6a5d0d",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Notes/Hyperparameter testing.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Hyperparameter testing"
+            }
+          },
+          {
+            "id": "f12d4eeaf081811f",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "0e7a3e3833f7dab5",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "59a58b9a22fa8649",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Notes/Hyperparameter testing.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Hyperparameter testing"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "5bdfe8d33cf97f93",
+  "lastOpenFiles": [
+    "Notes/README.md",
+    "README.md",
+    "Notes/Hyperparameter testing.md",
+    "Notes/images/Pasted image 20260611154441.png",
+    "Notes/images/Pasted image 20260611154848.png",
+    "Notes/images",
+    "Notes/images/Pasted image 20260611171558.png",
+    "Notes/images/Pasted image 20260611171547.png",
+    "Notes/images/Pasted image 20260611164024.png",
+    "Notes/images/Pasted image 20260611163841.png",
+    "Notes/images/Pasted image 20260611162649.png",
+    "Notes/images/Pasted image 20260611160551.png",
+    "Notes/images/Pasted image 20260611160156.png",
+    "Notes/images/Pasted image 20260611155940.png",
+    "Notes"
+  ]
+}

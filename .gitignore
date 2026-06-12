@@ -16,3 +16,6 @@ outputs/
 .ipynb_checkpoints/
 .DS_Store
 
+Notes/
+.obsidian/
+

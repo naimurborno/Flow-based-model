@@ -52,7 +52,7 @@ model_id:   "stabilityai/stable-diffusion-3-medium-diffusers"
 
 # ── Device & seed ────────────────────────────────────────────────────
 device: "cuda"   # cuda | cpu | mps
-seed:   43
+seed:   41
 
 # ── Prompts (first one is used by inference.py; all used by run_experiment.py) ──
 prompts:
@@ -61,7 +61,7 @@ prompts:
 negative_prompt: "blurry, low quality, ugly, deformed"
 
 # ── Output path ──────────────────────────────────────────────────────
-output: "output7.png"
+output: "output11.png"
 
 # ── Image generation ─────────────────────────────────────────────────
 generation:
@@ -108,10 +108,10 @@ save_trajectory: false
 #         higher → wider stochastic search          (recommended: 0.01 – 0.3)
 # save_original: also write the original (non-diverse) image for comparison
 onlb:
-  lam:           0.1    # start here — increase slowly (0.05 → 0.1 → 0.2)
-  eta:           0.01    # start here — increase slowly (0.01 → 0.05 → 0.1)
-  alpha:         0.05
-  mu:            0.05    # CFG directional push — normalized dₖ scaled by |vₖ| (0.1 → 0.5)
+  lam:           8    # start here — increase slowly (0.05 → 0.1 → 0.2)
+  eta:           0.09    # start here — increase slowly (0.01 → 0.05 → 0.1)
+  alpha:         2.4
+  mu:            0.07    # CFG directional push — normalized dₖ scaled by |vₖ| (0.1 → 0.5)
   max_drift:     8.0     # clamp escape per step in units of √D — keeps x̃_0 sane
   interp:        0.5 
   target_cos:   -0.7 

@@ -289,7 +289,7 @@ class ONLBSampler:
             x_tilde = (
                 x_tilde
                 # - dt * v_forward              # attraction
-                + dt * v_ortho                # soft repulsion (orthogonal)
+                # + dt * v_ortho                # soft repulsion (orthogonal)
                 + score_repulsion             # hard repulsion (score-based)
                 + noise_scale * xi            # Langevin noise
                 + cfg_push                    # CFG directional push
